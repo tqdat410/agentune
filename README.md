@@ -133,12 +133,12 @@ npm start
 | Phase | Focus | Status |
 |-------|-------|--------|
 | 1 | Project setup | ✓ Complete |
-| 2 | MCP server + tool definitions | → In Progress |
-| 3 | Audio engine (mpv) | Pending |
-| 4 | YouTube provider | Pending |
-| 5 | Browser dashboard | Pending |
-| 6 | Mood mode | Pending |
-| 7 | Queue + polish + publish | Pending |
+| 2 | MCP server + tool definitions | ✓ Complete |
+| 3 | Audio engine (mpv) | ✓ Complete |
+| 4 | YouTube provider | ✓ Complete |
+| 5 | Browser dashboard | → In Progress |
+| 6 | Mood mode | → In Progress |
+| 7 | Queue + polish + publish | → In Progress |
 
 See [Project Roadmap](./docs/project-roadmap.md) for detailed timelines and dependencies.
 

@@ -133,25 +133,45 @@ async destroy(): Promise<void>           // Graceful shutdown
 **Error Handling**: Returns errors if not initialized; graceful mpv quit on destroy
 
 ### `src/providers/youtube-provider.ts` — YouTube Integration
-**Status**: Phase 4 PENDING (placeholder)
+**Status**: Phase 4 COMPLETE (95 LOC)
 
-**Responsibility**: Search YouTube, extract stream URLs, validate metadata.
+**Responsibility**: Search YouTube via @distube/ytsr, extract audio streams via youtube-dl-exec (yt-dlp), format metadata.
 
-**Dependencies**:
-- `@distube/ytsr`: Video search (no API key)
-- `youtube-dl-exec`: Audio extraction & stream URL generation
-- Returns: Stream URL (m3u8 or direct audio URL)
+**Implementation**:
+- `YouTubeProvider` class with two core methods
+- `search(query, limit?)`: Async search via ytsr; filters to videos only; returns up to `limit` results
+- `getAudioUrl(videoId/Url)`: Async extraction via youtube-dl-exec; returns stream URL + metadata
+- Singleton pattern: `createYoutubeProvider()` + `getYoutubeProvider()`
 
-**Functions**:
+**Key Types**:
+```typescript
+export interface SearchResult {
+  id: string;
+  title: string;
+  artist: string;
+  duration: string;        // "3:45" formatted
+  durationMs: number;      // milliseconds
+  thumbnail: string;
+  url: string;             // YouTube watch URL
+}
+
+export interface AudioInfo {
+  streamUrl: string;       // m4a stream URL from yt-dlp
+  title: string;
+  artist: string;
+  duration: number;        // seconds
+  thumbnail: string;
+}
 ```
-• search(query: string) → SearchResult[]
-• getStreamUrl(videoId: string) → string (m3u8 URL)
-• parseMetadata(videoId) → {title, artist, duration, thumbnail}
-```
 
-**Stream URL Cache**: Cache URLs for 5 hours; refresh on 404
+**Helper Function**:
+- `parseDuration(duration: "3:45"): number` — Converts formatted duration to milliseconds
 
-**Search Latency**: Target < 1 second
+**Error Handling**:
+- Empty query returns `[]`
+- Invalid videoId throws error
+- Missing stream URL throws error (caught by caller)
+- Uses `console.error()` for debug logs (stdio-safe)
 
 ### `src/web/web-server.ts` — Browser Dashboard
 **Status**: Phase 5 PENDING (placeholder)
