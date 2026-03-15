@@ -86,33 +86,30 @@ import type { Track, SearchResult } from './queue/queue-manager.js';
 **Never throw errors from MCP tool functions.** Always return a structured error response.
 
 ```typescript
-// All tool functions must return this structure:
-type ToolResult = {
-  isError: boolean;
-  message: string;
-  data?: any;
-};
+// All tool functions must return this structure (MCP SDK shape):
+type ToolContent = { type: "text"; text: string };
+type ToolResult = { content: ToolContent[]; isError?: boolean };
 
 // ✓ Correct
 async function play(videoId: string): Promise<ToolResult> {
   if (!videoId) {
     return {
-      isError: true,
-      message: 'videoId is required'
+      content: [{ type: "text", text: "videoId is required" }],
+      isError: true
     };
   }
   try {
     const url = await getStreamUrl(videoId);
     // ... playback logic
     return {
-      isError: false,
-      message: 'Playing',
-      data: {nowPlaying: trackMetadata}
+      content: [{ type: "text", text: JSON.stringify({
+        nowPlaying: trackMetadata
+      }, null, 2) }]
     };
   } catch (err) {
     return {
-      isError: true,
-      message: `Playback failed: ${(err as Error).message}`
+      content: [{ type: "text", text: `Playback failed: ${(err as Error).message}` }],
+      isError: true
     };
   }
 }

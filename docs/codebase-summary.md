@@ -45,27 +45,45 @@ sbotify/
 **Error Handling**: Top-level try/catch → exit code 1
 
 ### `src/mcp/mcp-server.ts` — MCP Protocol
-**Status**: Phase 2 PENDING (placeholder)
+**Status**: Phase 2 COMPLETE (118 LOC)
 
-**Responsibility**: Initialize McpServer, register tool definitions, handle agent requests.
+**Responsibility**: Initialize McpServer, register 10 MCP tool schemas, handle agent requests via stdio.
 
-**Design**:
-- Use `@modelcontextprotocol/sdk` McpServer
-- Register tools: `search`, `play`, `skip`, `queue`, `status`, `mood`
-- Use Zod for request validation
-- Return structure: `{isError: boolean, message: string, data?: any}`
+**Implementation**:
+- `createMcpServer()`: Async entry; initializes McpServer instance
+- Registers 10 tools with Zod schemas: search, play, play_mood, pause, resume, skip, queue_add, queue_list, now_playing, volume
+- StdioServerTransport for agent communication
+- Exports `MOOD_VALUES` const + `Mood` type for strict mood validation
 
-**Tool Definitions** (Phase 2 implementation):
+**Tool Definitions** (Phase 2 complete):
 ```
-• search(query: string) → {results: SearchResult[], isError: boolean}
-• play(videoId: string) → {nowPlaying: Track, isError: boolean}
-• skip() → {nowPlaying: Track, isError: boolean}
-• queue(videoId: string) → {queueLength: number, isError: boolean}
-• status() → {nowPlaying: Track, progress: number, queue: Track[], isError: boolean}
-• mood(moodKeyword: string) → {plays: Track[], isError: boolean}
+• search(query, limit?) → {results: [], message: string}
+• play(id) → {nowPlaying: {id, title, artist, duration}, message: string}
+• play_mood(mood: "focus"|"energetic"|"chill"|"debug"|"ship") → auto-plays mood preset
+• pause() → {status: "paused", message: string}
+• resume() → {status: "playing", message: string}
+• skip() → {message: string}
+• queue_add(query) → {added: Track, position: number}
+• queue_list() → {queue: Track[]}
+• now_playing() → {nowPlaying: Track | null}
+• volume(level?) → {volume: number}
 ```
 
-**IPC**: stdio transport; agent initiates, server responds
+**Return Structure**: `{content: [{type: "text", text: "..."}], isError?: boolean}` (MCP SDK standard)
+
+### `src/mcp/tool-handlers.ts` — Tool Implementation
+**Status**: Phase 2 COMPLETE (122 LOC)
+
+**Responsibility**: Handler functions for all 10 MCP tools; stub implementations wired to real services in later phases.
+
+**Implementation**:
+- 10 async handler functions: `handleSearch`, `handlePlay`, `handlePlayMood`, `handlePause`, `handleResume`, `handleSkip`, `handleQueueAdd`, `handleQueueList`, `handleNowPlaying`, `handleVolume`
+- `ToolResult` type: `{content: ToolContent[], isError?: boolean}`
+- Helper functions: `textResult()`, `errorResult()` for response formatting
+- Graceful error handling with try/catch on all functions
+- Stub returns with TODO comments indicating Phase 3–4 wiring points
+
+**Design**: Functions return well-formatted JSON-wrapped responses; MCP tools invoke these handlers via Promise
 
 ### `src/audio/mpv-controller.ts` — Audio Engine
 **Status**: Phase 3 PENDING (placeholder)
