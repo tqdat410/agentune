@@ -17,7 +17,9 @@ sbotify/
 │   ├── providers/
 │   │   └── youtube-provider.ts       # YouTube search + stream extraction (Phase 4)
 │   ├── web/
-│   │   └── web-server.ts             # HTTP + WebSocket server (Phase 5)
+│   │   ├── state-broadcaster.ts      # Dashboard playback snapshots (Phase 5)
+│   │   ├── web-server.ts             # HTTP + WebSocket server (Phase 5)
+│   │   └── web-server-helpers.ts     # Shared web server helpers (Phase 5)
 │   ├── queue/
 │   │   └── queue-manager.ts          # Queue state management (Phase 7)
 │   └── mood/
@@ -35,19 +37,19 @@ sbotify/
 ## Module Responsibilities
 
 ### `src/index.ts` — Entry Point
-**Status**: Phase 3 UPDATE (47 LOC)
+**Status**: Phase 5 UPDATE
 
 **Responsibility**: Bootstrap server, initialize all subsystems, handle graceful shutdown.
 
 **Key Functions**:
-- `main()`: Async entry; initializes queue, YouTube provider, web server, **mpv audio engine**, MCP server
+- `main()`: Async entry; initializes queue, YouTube provider, mpv controller, browser dashboard, MCP server
 - `shutdown(signal)`: Handles SIGINT/SIGTERM; destroys mpv gracefully before exit
 - Uses `console.error()` only (never `console.log()` — corrupts MCP stdio)
 
-**Phase 3 Changes**:
-- Calls `createMpvController()` and `await mpv.init()`
-- Non-fatal mpv init: Catches errors and logs warning if mpv unavailable
-- `shutdown()` calls `await mpv.destroy()` to cleanly quit mpv before exit
+**Phase 5 Changes**:
+- Creates the web server with the shared mpv controller instance before MCP bootstrap
+- Keeps dashboard available even when mpv init fails
+- Still treats mpv startup as non-fatal and logs degraded-mode warnings
 
 **Shebang**: `#!/usr/bin/env node` enables direct CLI invocation
 
@@ -79,24 +81,24 @@ sbotify/
 **Return Structure**: `{content: [{type: "text", text: "..."}], isError?: boolean}` (MCP SDK standard)
 
 ### `src/mcp/tool-handlers.ts` — Tool Implementation
-**Status**: Phase 2/3 PARTIAL (115 LOC, audio wired)
+**Status**: Phase 5 PARTIAL
 
-**Responsibility**: Handler functions for all 10 MCP tools; wired to MpvController for audio control, stubs for search/queue.
+**Responsibility**: Handler functions for all 10 MCP tools; wired to YouTube provider, mpv controller, and dashboard auto-open.
 
 **Implementation**:
 - 10 async handler functions: `handleSearch`, `handlePlay`, `handlePlayMood`, `handlePause`, `handleResume`, `handleSkip`, `handleQueueAdd`, `handleQueueList`, `handleNowPlaying`, `handleVolume`
 - `ToolResult` type: `{content: ToolContent[], isError?: boolean}`
 - Helper functions: `textResult()`, `errorResult()` for response formatting
-- **Phase 3 Wiring**: Play, Pause, Resume, Stop → `getMpvController().{method}()`
-- **Phase 4 TODO**: Search, PlayMood wired to YouTubeProvider
-- **Phase 7 TODO**: Queue operations, Volume wired to real implementations
+- **Phase 5 Wiring**: Successful `play` opens the browser dashboard once per process
+- **Phase 6 TODO**: Mood handler still stubbed
+- **Phase 7 TODO**: Queue operations still stubbed
 
 **Design**: All handlers check `getMpvController().isReady()` before audio operations; return error if mpv unavailable
 
 ### `src/audio/mpv-controller.ts` — Audio Engine
-**Status**: Phase 3 COMPLETE (195 LOC)
+**Status**: Phase 5 UPDATE
 
-**Responsibility**: Spawn headless mpv process via node-mpv, manage IPC communication, control audio playback.
+**Responsibility**: Spawn headless mpv process via node-mpv, manage IPC communication, control audio playback, and emit dashboard-facing state changes.
 
 **Implementation**:
 - Singleton `MpvController` class spawned with `createMpvController()`
@@ -108,19 +110,22 @@ sbotify/
 
 **Key Methods**:
 ```typescript
-async init(): Promise<void>              // Spawn mpv, verify readiness
+init(): void                              // Spawn mpv, verify readiness
 isReady(): boolean                        // Check if initialized
-async play(url: string, meta): Promise<void>
-async pause(): Promise<void>
-async resume(): Promise<void>
-async stop(): Promise<void>
-async setVolume(level: number): Promise<number>
-async getVolume(): Promise<number>
+play(url: string, meta): void
+pause(): void
+resume(): void
+stop(): void
+setVolume(level: number): number
+toggleMute(): boolean
+getVolume(): number
+getIsMuted(): boolean
 async getPosition(): Promise<number>     // Time position in seconds
 async getDuration(): Promise<number>
-async getCurrentTrack(): Promise<TrackMeta | null>
-async getIsPlaying(): Promise<boolean>
-async destroy(): Promise<void>           // Graceful shutdown
+getCurrentTrack(): TrackMeta | null
+getIsPlaying(): boolean
+getState(): Readonly<MpvState>
+destroy(): void                          // Graceful shutdown
 ```
 
 **TrackMeta Type**:
@@ -128,9 +133,9 @@ async destroy(): Promise<void>           // Graceful shutdown
 {id, title, artist?, duration?, thumbnail?}
 ```
 
-**Internal State**: Tracks `currentTrack`, `isPlaying`, `volume` (80 default)
+**Internal State**: Tracks `currentTrack`, `isPlaying`, `isMuted`, `volume` (80 default)
 
-**Error Handling**: Returns errors if not initialized; graceful mpv quit on destroy
+**Error Handling**: Returns errors if not initialized; graceful mpv quit on destroy; emits `state-change` events for dashboard updates
 
 ### `src/providers/youtube-provider.ts` — YouTube Integration
 **Status**: Phase 4 COMPLETE (95 LOC)
@@ -174,26 +179,38 @@ export interface AudioInfo {
 - Uses `console.error()` for debug logs (stdio-safe)
 
 ### `src/web/web-server.ts` — Browser Dashboard
-**Status**: Phase 5 PENDING (placeholder)
+**Status**: Phase 5 COMPLETE
 
-**Responsibility**: HTTP server (localhost:3737), WebSocket real-time updates, static file serving.
+**Responsibility**: HTTP server (localhost:3737 with fallback), WebSocket real-time updates, static file serving, browser auto-open, and graceful degraded-mode handling when mpv is unavailable.
 
 **Design**:
 - HTTP: Serve `public/index.html` + `public/style.css` + `public/app.js`
-- WebSocket: Broadcast playback updates (now-playing, progress, queue) at 100ms intervals
+- WebSocket: Broadcast playback updates from `StateBroadcaster`
 - Endpoints:
   ```
   GET /              → index.html
-  GET /api/status    → {nowPlaying, progress, queue}
+  GET /api/status    → {playing, title, artist, thumbnail, position, duration, volume, muted, queue, mood}
+  POST /api/volume   → {volume: 0–100} or 503 if mpv unavailable
   WS /ws             → Real-time updates (subscribe)
-  POST /api/volume   → {volume: 0–100}
   ```
 
 **Dashboard Features** (Phase 5):
-- Now-playing title, artist, progress bar
-- Volume slider
-- Queue preview (next 3 tracks)
-- Auto-update on `nowPlaying` change (< 100ms latency)
+- Now-playing title, artist, thumbnail, progress bar
+- Volume slider + mute toggle
+- Queue placeholder until Phase 7
+- Mood placeholder until Phase 6
+- Auto-update on playback state change + reconnect
+- Auto-open once on first successful play
+
+### `src/web/state-broadcaster.ts` — Dashboard State Sync
+**Status**: Phase 5 COMPLETE
+
+**Responsibility**: Convert mpv state changes into dashboard snapshots and throttle position refreshes to 1 second.
+
+### `src/web/web-server-helpers.ts` — Web Server Helpers
+**Status**: Phase 5 COMPLETE
+
+**Responsibility**: Shared helpers for port constants, static file resolution, MIME types, JSON responses, browser open commands, and volume-body parsing.
 
 ### `src/queue/queue-manager.ts` — Queue State
 **Status**: Phase 7 PENDING (placeholder)
@@ -256,9 +273,9 @@ Agent
   │
   └─→ [Web Server (HTTP/WS)]
        ├─→ Browser requests /api/status
-       │    └─→ [Queue Manager] read nowPlaying, progress
-       ├─→ Browser volume slider
-       │    └─→ [mpv Controller] set volume
+       │    └─→ [StateBroadcaster] read dashboard snapshot
+       ├─→ Browser volume slider / mute toggle
+       │    └─→ [mpv Controller] set volume or toggle mute if ready
        └─→ WebSocket push updates
             └─→ Dashboard re-renders
 ```

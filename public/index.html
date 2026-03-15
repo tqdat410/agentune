@@ -1,14 +1,55 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>sbotify</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <h1>sbotify</h1>
-  <p>Dashboard coming in Phase 5.</p>
-  <script src="app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>sbotify dashboard</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero-card">
+        <div class="art-wrap">
+          <img data-art alt="Album art" src="https://placehold.co/640x640/10131a/e6ecff?text=Sbotify" />
+        </div>
+        <div class="hero-copy">
+          <p class="eyebrow">Agent DJ dashboard</p>
+          <h1 data-title>Nothing playing</h1>
+          <p data-artist>Ask your agent to start a track</p>
+          <div class="status-row">
+            <span class="pill" data-state>Idle</span>
+            <span class="pill subtle" data-mood>No mood</span>
+          </div>
+          <div class="progress-card">
+            <div class="progress-track">
+              <div class="progress-bar" data-progress></div>
+            </div>
+            <div class="time-row">
+              <span data-current-time>0:00</span>
+              <span data-duration>0:00</span>
+            </div>
+          </div>
+          <div class="controls">
+            <label class="volume-control">
+              <span>Volume</span>
+              <input data-volume type="range" min="0" max="100" value="80" />
+            </label>
+            <button data-mute type="button">Mute</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="queue-card">
+        <div class="card-head">
+          <h2>Queue</h2>
+          <span>Read only</span>
+        </div>
+        <ul data-queue class="queue-list">
+          <li class="queue-empty">Queue not wired yet</li>
+        </ul>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
 </html>

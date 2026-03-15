@@ -2,6 +2,7 @@
 
 import { getMpvController } from '../audio/mpv-controller.js';
 import { getYoutubeProvider } from '../providers/youtube-provider.js';
+import { getWebServer } from '../web/web-server.js';
 
 export type ToolContent = { type: "text"; text: string };
 export type ToolResult = { content: ToolContent[]; isError?: boolean };
@@ -60,6 +61,7 @@ export async function handlePlay(args: { id: string }): Promise<ToolResult> {
     };
 
     mpv.play(audio.streamUrl, meta);
+    getWebServer()?.openDashboardOnce();
 
     return textResult({
       nowPlaying: meta,

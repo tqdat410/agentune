@@ -49,7 +49,7 @@ sbotify is a three-tier system:
    │   mpv   │                                    │  Web Server     │
    │ (audio) │                                    │ (Phase 5)       │
    └─────────┘                                    │                 │
-                                                  │ HTTP (GET /api) │
+                                                  │ HTTP + WebSocket│
                                                   │ WS (/ws)        │
                                                   │ Static files    │
                                                   └────────┬────────┘
@@ -167,10 +167,13 @@ MpvController.resume()            // Resume playback
 MpvController.stop()              // Stop playback
 MpvController.setVolume(0-100)    // Set volume level
 MpvController.getVolume()         // Read current volume
+MpvController.toggleMute()        // Toggle mute state
+MpvController.getIsMuted()        // Read mute state
 MpvController.getPosition()       // Playback time (seconds)
 MpvController.getDuration()       // Track duration
 MpvController.getCurrentTrack()   // Track metadata
 MpvController.getIsPlaying()      // Playback status
+MpvController.getState()          // Snapshot state for dashboard
 MpvController.destroy()           // Graceful shutdown
 ```
 
@@ -241,7 +244,7 @@ getMoodQuery(mood: string): string
 
 **Integration**: Agent calls `mood("focus")` → triggers `search(getMoodQuery("focus"))` → plays result
 
-### 6. Web Server (Phase 5)
+### 6. Web Server (Phase 5) ✓ COMPLETE
 
 **Purpose**: HTTP server for browser dashboard + WebSocket for real-time updates.
 
@@ -252,24 +255,28 @@ getMoodQuery(mood: string): string
 | GET | / | Serve index.html |
 | GET | /api/status | JSON: {nowPlaying, progress, queue} |
 | POST | /api/volume | Set volume (body: {volume: 0-100}) |
-| WS | /ws | Real-time push: nowPlaying changes, progress updates |
+| WS | /ws | Real-time push: state updates + volume/mute commands |
 
 **HTTP Server**:
-- Listen on localhost:3737
+- Listen on localhost:3737, fall back through 3746 if busy
 - Serve static files from `public/`
-- CORS: Allow localhost only
+- Return `503` for volume updates when mpv is unavailable instead of crashing the request path
 
 **WebSocket Server**:
-- Broadcast playback updates (100ms cadence)
-- Send: `{type: "status-update", data: {nowPlaying, progress, queue}}`
-- Subscribe/unsubscribe on client connect/disconnect
+- Broadcast playback updates on mpv state changes plus a 1-second position refresh
+- Send: `{type: "state", data: {playing, title, artist, thumbnail, position, duration, volume, muted, queue, mood}}`
+- Accept: `{type: "volume", level}` and `{type: "mute"}` from browser clients
+- Push current state immediately on connect
 
 **Dashboard Features** (Phase 5):
 - Now-playing title, artist, album art
-- Progress bar (clickable for seek)
+- Progress bar (display only)
 - Volume slider (0-100)
-- Queue preview (next 3 tracks)
+- Mute toggle
+- Queue preview placeholder until Phase 7
+- Mood badge placeholder until Phase 6
 - Auto-refresh on data change
+- Auto-opens in the default browser on first successful `play`
 
 ### Data Flow Example: "Play focus music"
 
@@ -300,11 +307,11 @@ getMoodQuery(mood: string): string
 6. mpv plays audio (headless, independent)
 
 7. Web Server publishes status via WebSocket
-   ├─ Browser receives: {type: "status-update", nowPlaying: {...}}
+   ├─ Browser receives: {type: "state", data: {...}}
    ├─ Dashboard updates:
    │  ├─ Title: "Lofi Beats..."
    │  ├─ Progress: 0:00
-   │  └─ Queue: (empty or next track)
+   │  └─ Queue: placeholder until Phase 7
    └─ User sees now-playing info in real-time
 ```
 

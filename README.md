@@ -74,7 +74,7 @@ Then ask Claude Code:
 Open http://localhost:3737 in your browser to see:
 - Now-playing track (title, artist, progress)
 - Volume slider
-- Queue preview
+- Queue preview placeholder (until Phase 7)
 
 ## Architecture Overview
 
@@ -111,6 +111,7 @@ Coding Agent (Claude Code/Cursor)
 - **[Code Standards](./docs/code-standards.md)** — TypeScript conventions, ESM rules, naming patterns
 - **[System Architecture](./docs/system-architecture.md)** — Component interactions, IPC protocol details
 - **[Project Roadmap](./docs/project-roadmap.md)** — Phase timeline, milestones, progress
+- **[Project Changelog](./docs/project-changelog.md)** — Significant implementation changes and validation notes
 
 ## Development
 
@@ -136,9 +137,9 @@ npm start
 | 2 | MCP server + tool definitions | ✓ Complete |
 | 3 | Audio engine (mpv) | ✓ Complete |
 | 4 | YouTube provider | ✓ Complete |
-| 5 | Browser dashboard | → In Progress |
-| 6 | Mood mode | → In Progress |
-| 7 | Queue + polish + publish | → In Progress |
+| 5 | Browser dashboard | ✓ Complete |
+| 6 | Mood mode | → Pending |
+| 7 | Queue + polish + publish | → Pending |
 
 See [Project Roadmap](./docs/project-roadmap.md) for detailed timelines and dependencies.
 

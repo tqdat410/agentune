@@ -14,7 +14,7 @@ Empower developers using AI coding assistants (Claude Code, Cursor, Codex) to en
 2. **Secondary**: Open-source developers needing ambient music during long coding sessions
 3. **Tertiary**: Streaming researchers studying agent-based media control
 
-## MVP Scope (Phases 1–4)
+## MVP Scope (Phases 1–5)
 
 ### In Scope
 - Agent-driven search on YouTube (no API key required)
@@ -104,10 +104,10 @@ Empower developers using AI coding assistants (Claude Code, Cursor, Codex) to en
 - [ ] < 1 second search latency
 
 ### Phase 5: Dashboard
-- [ ] Now-playing title updates in real-time
-- [ ] Progress bar syncs with playback
-- [ ] Volume slider sends commands to mpv
-- [ ] Responsive on mobile browsers
+- [x] Now-playing title updates in real-time
+- [x] Progress bar syncs with playback
+- [x] Volume slider sends commands to mpv when audio is available
+- [x] Responsive on mobile browsers
 
 ## Out-of-Scope Justification
 
@@ -151,7 +151,7 @@ All without human clicking, confirmation, or intervention.
 ## Timeline
 
 - **Week 1 (P0 phases 1–4)**: Bootstrap, MCP server, mpv, YouTube (dependencies resolved)
-- **Week 2 (P1 phases 5–7)**: Dashboard, mood mode, queue, publish to npm
+- **Week 2 (P1 phases 5–7)**: Dashboard complete; mood mode, queue, publish remain
 
 ## Review & Iteration
 

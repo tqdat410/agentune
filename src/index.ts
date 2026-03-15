@@ -15,10 +15,10 @@ async function main() {
   // Initialize components
   createQueueManager();
   createYoutubeProvider();
-  createWebServer();
 
   // Initialize audio engine — non-fatal if mpv is missing
   const mpv = createMpvController();
+  createWebServer(mpv);
   try {
     mpv.init();
   } catch (err) {

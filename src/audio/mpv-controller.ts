@@ -3,6 +3,7 @@
 
 import mpvAPI from 'node-mpv';
 import { execSync } from 'child_process';
+import { EventEmitter } from 'events';
 import { unlinkSync } from 'fs';
 import { getIpcPath } from './platform-ipc-path.js';
 
@@ -17,6 +18,7 @@ export interface TrackMeta {
 interface MpvState {
   currentTrack: TrackMeta | null;
   isPlaying: boolean;
+  isMuted: boolean;
   volume: number;
 }
 
@@ -31,11 +33,12 @@ function isMpvInstalled(): boolean {
   }
 }
 
-export class MpvController {
+export class MpvController extends EventEmitter {
   private player: mpvAPI | null = null;
   private state: MpvState = {
     currentTrack: null,
     isPlaying: false,
+    isMuted: false,
     volume: 80,
   };
   private initialized = false;
@@ -73,6 +76,7 @@ export class MpvController {
 
     this.player.volume(this.state.volume);
     this.initialized = true;
+    this.emitStateChange();
     console.error('[mpv] Ready — headless audio engine started');
   }
 
@@ -92,6 +96,7 @@ export class MpvController {
     player.load(url);
     this.state.currentTrack = meta;
     this.state.isPlaying = true;
+    this.emitStateChange();
     console.error('[mpv] Playing:', meta.title);
   }
 
@@ -99,6 +104,7 @@ export class MpvController {
     const player = this.ensureReady();
     player.pause();
     this.state.isPlaying = false;
+    this.emitStateChange();
     console.error('[mpv] Paused');
   }
 
@@ -106,6 +112,7 @@ export class MpvController {
     const player = this.ensureReady();
     player.resume();
     this.state.isPlaying = true;
+    this.emitStateChange();
     console.error('[mpv] Resumed');
   }
 
@@ -114,6 +121,7 @@ export class MpvController {
     player.stop();
     this.state.currentTrack = null;
     this.state.isPlaying = false;
+    this.emitStateChange();
     console.error('[mpv] Stopped');
   }
 
@@ -122,12 +130,30 @@ export class MpvController {
     const clamped = Math.max(0, Math.min(100, level));
     player.volume(clamped);
     this.state.volume = clamped;
+    this.emitStateChange();
     console.error('[mpv] Volume set to:', clamped);
     return clamped;
   }
 
   getVolume(): number {
     return this.state.volume;
+  }
+
+  toggleMute(): boolean {
+    const player = this.ensureReady();
+    if (this.state.isMuted) {
+      player.unmute();
+    } else {
+      player.mute();
+    }
+    this.state.isMuted = !this.state.isMuted;
+    this.emitStateChange();
+    console.error('[mpv] Mute toggled:', this.state.isMuted);
+    return this.state.isMuted;
+  }
+
+  getIsMuted(): boolean {
+    return this.state.isMuted;
   }
 
   async getPosition(): Promise<number> {
@@ -158,6 +184,10 @@ export class MpvController {
     return this.state.isPlaying;
   }
 
+  getState(): Readonly<MpvState> {
+    return this.state;
+  }
+
   destroy(): void {
     if (this.player) {
       try {
@@ -167,10 +197,18 @@ export class MpvController {
       }
       this.player = null;
       this.initialized = false;
+      this.state.currentTrack = null;
+      this.state.isPlaying = false;
+      this.state.isMuted = false;
       // Reset singleton so next createMpvController() creates fresh instance
       controller = null;
+      this.emitStateChange();
       console.error('[mpv] Destroyed');
     }
+  }
+
+  private emitStateChange(): void {
+    this.emit('state-change', this.state);
   }
 }
 
