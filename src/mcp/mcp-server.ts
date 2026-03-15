@@ -3,6 +3,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { MOOD_VALUES } from "../mood/mood-presets.js";
 import {
   handleSearch,
   handlePlay,
@@ -15,9 +16,6 @@ import {
   handleNowPlaying,
   handleVolume,
 } from "./tool-handlers.js";
-
-export const MOOD_VALUES = ["focus", "energetic", "chill", "debug", "ship"] as const;
-export type Mood = (typeof MOOD_VALUES)[number];
 
 export async function createMcpServer(): Promise<McpServer> {
   const server = new McpServer({
@@ -50,7 +48,7 @@ export async function createMcpServer(): Promise<McpServer> {
     "play_mood",
     "Play music matching a mood preset",
     {
-      mood: z.enum(MOOD_VALUES).describe("Mood preset: focus, energetic, chill, debug, or ship"),
+      mood: z.string().min(1).describe(`Mood preset: ${MOOD_VALUES.join(', ')}`),
     },
     async (args) => handlePlayMood(args),
   );

@@ -7,7 +7,7 @@ sbotify is a Model Context Protocol (MCP) server that enables coding agents (Cla
 ## Features
 
 - **Agent-driven music control**: Search, play, skip, queue songs via MCP protocol
-- **Mood-based playlists**: "chill" mode, "focus" mode, "hype" mode auto-generate queries
+- **Mood-based playlists**: "chill" mode, "focus" mode, "energetic" mode auto-generate curated queries
 - **Browser dashboard**: Real-time now-playing info + volume slider on localhost:3737
 - **Headless playback**: Audio plays independently via mpv (no browser needed)
 - **Cross-platform**: Works on Windows, macOS, Linux
@@ -138,7 +138,7 @@ npm start
 | 3 | Audio engine (mpv) | ✓ Complete |
 | 4 | YouTube provider | ✓ Complete |
 | 5 | Browser dashboard | ✓ Complete |
-| 6 | Mood mode | → Pending |
+| 6 | Mood mode | ✓ Complete |
 | 7 | Queue + polish + publish | → Pending |
 
 See [Project Roadmap](./docs/project-roadmap.md) for detailed timelines and dependencies.

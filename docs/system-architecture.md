@@ -224,25 +224,21 @@ now()          → Return nowPlaying metadata
 **Purpose**: Map mood keywords to YouTube search queries.
 
 **Mapping**:
-```typescript
-{
-  "focus": "lofi hip hop beats to study to",
-  "chill": "chill jazz vibes",
-  "hype": "best hip hop 2024",
-  "workout": "pump up workout music",
-  "sleep": "ambient sleep music 8 hours",
-  "relaxation": "spa relaxation music",
-  "productivity": "focus music for work"
-}
-```
+Each supported mood has a curated pool of 5 queries:
+- `focus`
+- `energetic`
+- `chill`
+- `debug`
+- `ship`
 
 **Function**:
 ```typescript
-getMoodQuery(mood: string): string
-// Case-insensitive lookup; fallback to mood as literal query
+normalizeMood(input: string): Mood | null
+getMoodQueries(mood: Mood): string[]
+getRandomMoodQuery(mood: Mood): string
 ```
 
-**Integration**: Agent calls `mood("focus")` → triggers `search(getMoodQuery("focus"))` → plays result
+**Integration**: Agent calls `play_mood("focus")` → normalize mood → pick random curated query → search YouTube → play first result → include `mood` in playback metadata for dashboard state.
 
 ### 6. Web Server (Phase 5) ✓ COMPLETE
 
@@ -274,7 +270,7 @@ getMoodQuery(mood: string): string
 - Volume slider (0-100)
 - Mute toggle
 - Queue preview placeholder until Phase 7
-- Mood badge placeholder until Phase 6
+- Mood badge reflects current track mood metadata when playback starts from `play_mood`
 - Auto-refresh on data change
 - Auto-opens in the default browser on first successful `play`
 

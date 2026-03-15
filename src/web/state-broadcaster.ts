@@ -21,7 +21,7 @@ export interface DashboardState {
 
 function mapTrack(track: TrackMeta | null) {
   if (!track) {
-    return { title: null, artist: null, thumbnail: null, duration: 0 };
+    return { title: null, artist: null, thumbnail: null, duration: 0, mood: null };
   }
 
   return {
@@ -29,6 +29,7 @@ function mapTrack(track: TrackMeta | null) {
     artist: track.artist ?? 'Unknown',
     thumbnail: track.thumbnail ?? null,
     duration: track.duration ?? 0,
+    mood: track.mood ?? null,
   };
 }
 
@@ -101,7 +102,7 @@ export class StateBroadcaster extends EventEmitter {
       volume: snapshot.volume,
       muted: snapshot.isMuted,
       queue: [],
-      mood: null,
+      mood: track.mood,
     };
   }
 }

@@ -14,14 +14,14 @@ Empower developers using AI coding assistants (Claude Code, Cursor, Codex) to en
 2. **Secondary**: Open-source developers needing ambient music during long coding sessions
 3. **Tertiary**: Streaming researchers studying agent-based media control
 
-## MVP Scope (Phases 1–5)
+## MVP Scope (Phases 1–6)
 
 ### In Scope
 - Agent-driven search on YouTube (no API key required)
 - Playback control (play, pause, skip, queue)
 - Browser dashboard showing now-playing + volume
 - Headless audio via mpv (independent of browser)
-- Basic mood keywords ("focus", "chill", "hype")
+- Curated mood keywords (`focus`, `energetic`, `chill`, `debug`, `ship`)
 - Cross-platform (Windows, macOS, Linux)
 
 ### Out of Scope (Post-MVP)
@@ -109,6 +109,11 @@ Empower developers using AI coding assistants (Claude Code, Cursor, Codex) to en
 - [x] Volume slider sends commands to mpv when audio is available
 - [x] Responsive on mobile browsers
 
+### Phase 6: Mood Mode
+- [x] `play_mood` resolves curated queries for the 5 supported moods
+- [x] Mood input is normalized case-insensitively
+- [x] Active mood appears in dashboard state
+
 ## Out-of-Scope Justification
 
 - **Spotify Integration**: Requires OAuth + paid API; YouTube is free + no keys
@@ -156,5 +161,5 @@ All without human clicking, confirmation, or intervention.
 ## Review & Iteration
 
 - Weekly sync with agent developers (if available)
-- Post-MVP: Gather usage metrics, mood preset feedback
+- Post-MVP: Gather usage metrics and tune curated mood query pools
 - Plan Spotify integration for v0.2 if demand warrants

@@ -1,6 +1,8 @@
 // MCP tool handler functions — wired to MpvController for audio, stubs for search/queue (phases 4, 7)
 
 import { getMpvController } from '../audio/mpv-controller.js';
+import type { Mood } from '../mood/mood-presets.js';
+import { getRandomMoodQuery, getMoodQueries, MOOD_VALUES, normalizeMood } from '../mood/mood-presets.js';
 import { getYoutubeProvider } from '../providers/youtube-provider.js';
 import { getWebServer } from '../web/web-server.js';
 
@@ -13,6 +15,42 @@ function textResult(data: unknown): ToolResult {
 
 function errorResult(message: string): ToolResult {
   return { content: [{ type: "text", text: message }], isError: true };
+}
+
+async function playResolvedTrack(id: string, extraMeta?: { mood?: Mood }): Promise<{
+  meta: {
+    id: string;
+    title: string;
+    artist: string;
+    duration: number;
+    thumbnail: string;
+    mood?: Mood;
+  };
+}> {
+  const mpv = getMpvController();
+  if (!mpv || !mpv.isReady()) {
+    throw new Error('Audio engine not initialized. Is mpv installed?');
+  }
+
+  const yt = getYoutubeProvider();
+  if (!yt) {
+    throw new Error('YouTube provider not initialized.');
+  }
+
+  const audio = await yt.getAudioUrl(id);
+  const meta = {
+    id,
+    title: audio.title,
+    artist: audio.artist,
+    duration: audio.duration,
+    thumbnail: audio.thumbnail,
+    ...extraMeta,
+  };
+
+  mpv.play(audio.streamUrl, meta);
+  getWebServer()?.openDashboardOnce();
+
+  return { meta };
 }
 
 export async function handleSearch(args: { query: string; limit: number }): Promise<ToolResult> {
@@ -43,42 +81,42 @@ export async function handleSearch(args: { query: string; limit: number }): Prom
 
 export async function handlePlay(args: { id: string }): Promise<ToolResult> {
   try {
-    const mpv = getMpvController();
-    if (!mpv || !mpv.isReady()) return errorResult('Audio engine not initialized. Is mpv installed?');
-
-    const yt = getYoutubeProvider();
-    if (!yt) return errorResult('YouTube provider not initialized.');
-
-    // Extract audio stream URL from video ID or YouTube URL
-    const audio = await yt.getAudioUrl(args.id);
-
-    const meta = {
-      id: args.id,
-      title: audio.title,
-      artist: audio.artist,
-      duration: audio.duration,
-      thumbnail: audio.thumbnail,
-    };
-
-    mpv.play(audio.streamUrl, meta);
-    getWebServer()?.openDashboardOnce();
+    const { meta } = await playResolvedTrack(args.id);
 
     return textResult({
       nowPlaying: meta,
-      message: `Now playing: ${audio.title} by ${audio.artist}`,
+      message: `Now playing: ${meta.title} by ${meta.artist}`,
     });
   } catch (err) {
     return errorResult(`Play failed: ${(err as Error).message}`);
   }
 }
 
-export async function handlePlayMood(args: { mood: "focus" | "energetic" | "chill" | "debug" | "ship" }): Promise<ToolResult> {
+export async function handlePlayMood(args: { mood: string }): Promise<ToolResult> {
   try {
-    // TODO: Wire to MoodPresets + YouTubeProvider in Phase 6
+    const mood = normalizeMood(args.mood);
+    if (!mood) {
+      return errorResult(`Unknown mood "${args.mood}". Available moods: ${MOOD_VALUES.join(', ')}.`);
+    }
+
+    const yt = getYoutubeProvider();
+    if (!yt) return errorResult('YouTube provider not initialized.');
+
+    const query = getRandomMoodQuery(mood);
+    const results = await yt.search(query, 1);
+    if (results.length === 0) {
+      return errorResult(`No results found for mood "${mood}" using query "${query}".`);
+    }
+
+    const topResult = results[0];
+    const { meta } = await playResolvedTrack(topResult.id, { mood });
+
     return textResult({
-      mood: args.mood,
-      nowPlaying: { title: `${args.mood} vibes`, artist: "Auto DJ", id: "stub-mood", duration: 200 },
-      message: `Playing ${args.mood} mood (stub). Wire MoodPresets for curated queries.`,
+      mood,
+      query,
+      availableQueries: getMoodQueries(mood),
+      nowPlaying: meta,
+      message: `Playing ${meta.title} for ${mood} mood.`,
     });
   } catch (err) {
     return errorResult(`Play mood failed: ${(err as Error).message}`);

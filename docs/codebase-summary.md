@@ -62,13 +62,13 @@ sbotify/
 - `createMcpServer()`: Async entry; initializes McpServer instance
 - Registers 10 tools with Zod schemas: search, play, play_mood, pause, resume, skip, queue_add, queue_list, now_playing, volume
 - StdioServerTransport for agent communication
-- Exports `MOOD_VALUES` const + `Mood` type for strict mood validation
+- Mood values now come from `src/mood/mood-presets.ts`; tool schema accepts a string and normalizes in the handler
 
 **Tool Definitions** (Phase 2 complete):
 ```
 • search(query, limit?) → {results: [], message: string}
 • play(id) → {nowPlaying: {id, title, artist, duration}, message: string}
-• play_mood(mood: "focus"|"energetic"|"chill"|"debug"|"ship") → auto-plays mood preset
+• play_mood(mood: string) → normalizes mood, selects curated query, auto-plays preset
 • pause() → {status: "paused", message: string}
 • resume() → {status: "playing", message: string}
 • skip() → {message: string}
@@ -90,7 +90,7 @@ sbotify/
 - `ToolResult` type: `{content: ToolContent[], isError?: boolean}`
 - Helper functions: `textResult()`, `errorResult()` for response formatting
 - **Phase 5 Wiring**: Successful `play` opens the browser dashboard once per process
-- **Phase 6 TODO**: Mood handler still stubbed
+- **Phase 6**: Mood handler now normalizes case-insensitive input and plays a curated random query from the selected mood pool
 - **Phase 7 TODO**: Queue operations still stubbed
 
 **Design**: All handlers check `getMpvController().isReady()` before audio operations; return error if mpv unavailable
@@ -130,7 +130,7 @@ destroy(): void                          // Graceful shutdown
 
 **TrackMeta Type**:
 ```typescript
-{id, title, artist?, duration?, thumbnail?}
+{id, title, artist?, duration?, thumbnail?, mood?}
 ```
 
 **Internal State**: Tracks `currentTrack`, `isPlaying`, `isMuted`, `volume` (80 default)
@@ -198,7 +198,7 @@ export interface AudioInfo {
 - Now-playing title, artist, thumbnail, progress bar
 - Volume slider + mute toggle
 - Queue placeholder until Phase 7
-- Mood placeholder until Phase 6
+- Mood badge populated from current track metadata when playback starts via `play_mood`
 - Auto-update on playback state change + reconnect
 - Auto-open once on first successful play
 
@@ -240,23 +240,22 @@ export interface AudioInfo {
 **Persistence**: Session-only (no disk storage in MVP)
 
 ### `src/mood/mood-presets.ts` — Mood Keywords
-**Status**: Phase 6 PENDING (placeholder)
+**Status**: Phase 6 COMPLETE
 
-**Responsibility**: Map mood keywords to YouTube search queries.
+**Responsibility**: Normalize supported mood input and provide curated YouTube query pools.
 
-**Mapping** (Phase 6 implementation):
-```
-"focus"   → "lofi hip hop beats to study to"
-"chill"   → "chill jazz vibes"
-"hype"    → "best hip hop 2024"
-"workout" → "pump up workout music"
-"sleep"   → "ambient sleep music 8 hours"
-```
+**Supported Moods**:
+- `focus`
+- `energetic`
+- `chill`
+- `debug`
+- `ship`
 
-**Function**:
+**Functions**:
 ```typescript
-getMoodQuery(mood: string): string
-// Example: getMoodQuery("focus") → "lofi hip hop beats to study to"
+normalizeMood(input: string): Mood | null
+getMoodQueries(mood: Mood): string[]
+getRandomMoodQuery(mood: Mood): string
 ```
 
 ## Data Flow
