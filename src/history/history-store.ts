@@ -269,6 +269,17 @@ export class HistoryStore {
     `).run(key, weight, boredom, Date.now());
   }
 
+  /** Expose underlying database for cache access (Last.fm provider). */
+  getDatabase(): Database.Database {
+    return this.db;
+  }
+
+  /** Update tags_json for a track by ID. */
+  updateTrackTags(trackId: string, tags: string[]): void {
+    this.db.prepare('UPDATE tracks SET tags_json = ? WHERE id = ?')
+      .run(JSON.stringify(tags), trackId);
+  }
+
   /** Close the database connection. */
   close(): void {
     this.db.close();

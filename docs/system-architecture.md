@@ -31,7 +31,15 @@ sbotify is a three-tier system:
 │  │ (Phase 4)   │ │ (Phase 7)   │ │ (Phase 6)    │    │
 │  └─────────────┘ └─────────────┘ └──────────────┘    │
 │          │               │                              │
-│          └───────┬───────┘                              │
+│          ├───────┬───────┤                              │
+│          │       │       │                              │
+│          │       ▼       │                              │
+│          │  ┌──────────────────┐                      │
+│          │  │ Last.fm Provider │                      │
+│          │  │ (Phase 3)        │                      │
+│          │  └──────────────────┘                      │
+│          │       │                                     │
+│          └───────┴───────┐                              │
 │                  ▼                                      │
 │  ┌──────────────────────────┐                         │
 │  │ mpv Controller (Phase 3) │                         │
@@ -75,11 +83,11 @@ sbotify is a three-tier system:
 
 **Tables**:
 ```
-tracks          — Denormalized track metadata + play counts
+tracks          — Denormalized track metadata + play counts + Last.fm tags
 plays           — Individual play events (started_at, played_sec, skipped, context)
 preferences     — Key-value user preferences (weight, boredom scores)
 session_state   — Singleton row: lane, taste state, agent persona, current intent
-lastfm_cache    — External API response cache
+lastfm_cache    — Last.fm API response cache with 7-day TTL (cache_key, response_json, fetched_at)
 ```
 
 **Key Methods**:
@@ -145,6 +153,49 @@ Tool: history
 **Transport**: stdio (STDIN for input, STDOUT for MCP responses, STDERR for debug logs)
 
 **Error Handling**: All tool results include `isError` flag; never throw.
+
+### 1.5 Last.fm Provider (Phase 3) NEW
+
+**Purpose**: Query Last.fm API for music discovery and metadata enrichment (similar artists, tracks, tags).
+
+**Dependencies**:
+- `LASTFM_API_KEY` env var (optional; provider gracefully disabled if missing)
+- SQLite database (lastfm_cache table for 7-day TTL response caching)
+
+**Data Flow**:
+```
+1. getTopTags(artist: string, track?: string)
+   ├─ Cache lookup: lastfm_cache table
+   ├─ Cache miss → Last.fm API call
+   ├─ Store in cache with 7-day TTL
+   └─ Return: [{name: "indie", count: 42}, ...]
+
+2. getSimilarArtists(artist: string, limit?: 10)
+   └─ Return: [{name: "...", match: 0.85}, ...]
+
+3. getSimilarTracks(artist: string, track: string, limit?: 10)
+   └─ Return: [{title: "...", artist: "...", match: 0.75}, ...]
+
+4. getTopTracksByTag(tag: string, limit?: 10)
+   └─ Return: [{title: "...", artist: "..."}, ...]
+```
+
+**YouTube Metadata Normalization**:
+- Before querying Last.fm, YouTube metadata is cleaned to remove:
+  - Quality suffixes: (official audio), [HD], (lyrics), [live], etc.
+  - Featured artist suffixes: (feat. X), [ft. Y], etc.
+- Prevents cache poisoning from mismatched artist/title formats
+
+**Cache Details**:
+- TTL: 7 days
+- Eviction: Expired rows deleted on startup
+- Storage: `lastfm_cache` table (cache_key, response_json, fetched_at)
+- Non-fatal: If API call fails or times out (5s), returns empty array (does not block playback)
+
+**Integration with Playback**:
+- Queue playback controller asynchronously fetches tags after playback starts (fire-and-forget)
+- Tags stored in track record via `updateTrackTags(trackId, tagNames)`
+- Does not block audio playback; runs in background
 
 ### 2. YouTube Provider (Phase 4)
 
@@ -348,6 +399,8 @@ getRandomMoodQuery(mood: Mood): string
    │  └─ Inserts play event into SQLite; increments track play_count
    ├─ mpv Controller: playback (JSON IPC)
    │  └─ Send: {command: ["loadfile", "https://stream.m3u8"]}
+   ├─ Last.fm Provider: async tag enrichment (fire-and-forget after playback starts)
+   │  └─ getTopTags("Lofi Beats", "...") → store tags via updateTrackTags()
    └─ Return: {isError: false, nowPlaying: {title: "Lofi Beats...", ...}}
 
 5. MCP returns result to agent on stdout

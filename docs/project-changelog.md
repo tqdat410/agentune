@@ -1,5 +1,24 @@
 # Project Changelog
 
+## 2026-03-16 (Continued)
+
+### Phase 3: Last.fm Provider + Cache
+- Added `src/providers/lastfm-provider.ts` — Last.fm API client with 7-day SQLite cache
+  - 4 endpoints: `getSimilarArtists(artist, limit?)`, `getSimilarTracks(artist, track, limit?)`, `getTopTags(artist, track?)`, `getTopTracksByTag(tag, limit?)`
+  - Cache eviction on startup: deletes expired rows with 7-day TTL
+  - YouTube metadata normalization: `normalizeForQuery()` strips official/lyric/live/ft. suffixes before querying Last.fm
+  - Graceful degradation: returns empty arrays if API call fails or times out (5s timeout)
+  - Singleton pattern: `createLastFmProvider(apiKey, db)` + `getLastFmProvider()`
+- Extended `src/history/history-store.ts` with two new methods:
+  - `getDatabase(): Database.Database` — Direct DB access for external providers (e.g., Last.fm)
+  - `updateTrackTags(trackId: string, tags: string[]): void` — Store Last.fm tags in track record
+- Updated `src/queue/queue-playback-controller.ts` — Async tag enrichment on every play (fire-and-forget)
+  - After playback starts, fetches `getTopTags()` from Last.fm provider and stores in history DB
+  - Does not block audio playback; runs in background
+- Updated `src/index.ts` — Optional Last.fm provider init gated by `LASTFM_API_KEY` env var
+  - Non-fatal: provider gracefully disabled if env var missing or API key invalid
+- All 60+ unit tests passing; build clean; no new external dependencies (Last.fm API is free, no auth)
+
 ## 2026-03-16
 
 ### Phase 2: Smart Play (play_song + Search Result Scorer)

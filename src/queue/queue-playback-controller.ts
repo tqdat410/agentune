@@ -1,6 +1,8 @@
 import type { MpvController } from '../audio/mpv-controller.js';
 import { getHistoryStore } from '../history/history-store.js';
+import { normalizeTrackId } from '../history/history-schema.js';
 import type { Mood } from '../mood/mood-presets.js';
+import { getLastFmProvider } from '../providers/lastfm-provider.js';
 import type { YouTubeProvider } from '../providers/youtube-provider.js';
 import type { SearchResult } from '../providers/youtube-provider.js';
 import { getWebServer } from '../web/web-server.js';
@@ -67,6 +69,9 @@ export class QueuePlaybackController {
     } catch (err) {
       console.error('[sbotify] Failed to record play:', (err as Error).message);
     }
+
+    // Enrich track tags from Last.fm (async, non-blocking)
+    this.enrichTrackTags(queueItem.artist, queueItem.title);
 
     return queueItem;
   }
@@ -140,6 +145,22 @@ export class QueuePlaybackController {
 
     this.queueManager.finishCurrentTrack();
     await this.playNextQueuedTrack();
+  }
+
+  /** Fetch tags from Last.fm and update track record (fire-and-forget). */
+  private enrichTrackTags(artist: string, title: string): void {
+    const lastfm = getLastFmProvider();
+    const store = getHistoryStore();
+    if (!lastfm || !store) return;
+
+    lastfm.getTopTags(artist, title).then((tags) => {
+      if (tags.length === 0) return;
+      const trackId = normalizeTrackId(artist, title);
+      const tagNames = tags.slice(0, 10).map((t) => t.name);
+      store.updateTrackTags(trackId, tagNames);
+    }).catch((err) => {
+      console.error('[sbotify] Tag enrichment failed:', (err as Error).message);
+    });
   }
 
   private async playNextQueuedTrack(): Promise<QueueItem | null> {

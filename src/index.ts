@@ -10,6 +10,7 @@ import { createWebServer, getWebServer } from './web/web-server.js';
 import { createQueueManager } from './queue/queue-manager.js';
 import { createQueuePlaybackController, getQueuePlaybackController } from './queue/queue-playback-controller.js';
 import { createHistoryStore, getHistoryStore } from './history/history-store.js';
+import { createLastFmProvider } from './providers/lastfm-provider.js';
 
 async function main() {
   console.error('[sbotify] Starting...');
@@ -19,6 +20,18 @@ async function main() {
     createHistoryStore();
   } catch (err) {
     console.error('[sbotify] History DB unavailable:', (err as Error).message);
+  }
+
+  // Initialize Last.fm provider (optional — discovery degrades gracefully)
+  const lastFmApiKey = process.env.LASTFM_API_KEY;
+  if (lastFmApiKey) {
+    const store = getHistoryStore();
+    if (store) {
+      createLastFmProvider(lastFmApiKey, store.getDatabase());
+      console.error('[sbotify] Last.fm provider initialized.');
+    }
+  } else {
+    console.error('[sbotify] No LASTFM_API_KEY — discovery features will be limited.');
   }
 
   // Initialize components

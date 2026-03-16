@@ -230,9 +230,9 @@ export async function handleVolume(args: {level?}): Promise<ToolResult>
 
 ---
 
-## Phase 3: Audio Engine (mpv) (COMPLETE)
+## Phase 3: Audio Engine (mpv) + Last.fm Provider (COMPLETE)
 
-**Status**: ✓ COMPLETE (Mar 15)
+**Status**: ✓ COMPLETE (Mar 15; Last.fm provider added Mar 16)
 
 **Objectives** ✓:
 - [x] Spawn headless mpv process via node-mpv library
@@ -240,6 +240,9 @@ export async function handleVolume(args: {level?}): Promise<ToolResult>
 - [x] Cross-platform IPC (Windows named pipes, Unix sockets)
 - [x] Wire audio engine to MCP tool handlers (Phase 2 integration)
 - [x] Non-fatal startup (server runs even if mpv missing)
+- [x] Add Last.fm API client for music discovery metadata enrichment
+- [x] Implement SQLite cache for Last.fm responses (7-day TTL)
+- [x] Async tag enrichment on track play (fire-and-forget)
 
 **Deliverables** ✓:
 - [x] `src/audio/mpv-controller.ts` — Full implementation (195 LOC)
@@ -248,6 +251,10 @@ export async function handleVolume(args: {level?}): Promise<ToolResult>
 - [x] `src/index.ts` — Audio engine integration (47 LOC)
 - [x] `src/mcp/tool-handlers.ts` — Wired pause/resume/stop handlers
 - [x] Graceful error handling + mpv binary detection
+- [x] `src/providers/lastfm-provider.ts` — Last.fm API client with cache (235 LOC)
+- [x] Extended `src/history/history-store.ts` with `getDatabase()` and `updateTrackTags()` methods
+- [x] Updated `src/queue/queue-playback-controller.ts` — Async tag enrichment on play
+- [x] Updated `src/index.ts` — Optional Last.fm init gated by LASTFM_API_KEY env var
 
 **Key Implementation**:
 ```typescript
@@ -285,13 +292,22 @@ export function createMpvController(): MpvController (singleton)
 - [x] Works on Windows, macOS, Linux (tested Windows path)
 - [x] No hanging processes after shutdown
 - [x] MCP tools check `isReady()` before operations
+- [x] Last.fm provider initializes if LASTFM_API_KEY set (non-fatal if missing)
+- [x] Last.fm API calls cache responses with 7-day TTL
+- [x] Expired cache rows evicted on startup
+- [x] Tag enrichment runs async and does not block playback
+- [x] YouTube metadata normalized before Last.fm queries (strips quality/ft. suffixes)
+- [x] Empty array returned gracefully if API call fails or times out
 
 **Files Created/Modified** ✓:
 - [x] `src/audio/mpv-controller.ts` (195 LOC)
 - [x] `src/audio/platform-ipc-path.ts` (8 LOC)
 - [x] `src/types/node-mpv.d.ts` (40 LOC)
-- [x] `src/index.ts` (47 LOC, added mpv initialization)
-- [x] `src/mcp/tool-handlers.ts` (115 LOC, wired pause/resume/stop)
+- [x] `src/index.ts` (added mpv initialization; added Last.fm init)
+- [x] `src/mcp/tool-handlers.ts` (wired pause/resume/stop)
+- [x] `src/providers/lastfm-provider.ts` (235 LOC, new)
+- [x] `src/history/history-store.ts` (added getDatabase, updateTrackTags methods)
+- [x] `src/queue/queue-playback-controller.ts` (added async tag enrichment)
 
 ---
 
@@ -701,19 +717,19 @@ export class QueueManager {
 
 ## Progress Tracking
 
-**Last Updated**: Mar 16, 2026 (Phase 2 Smart Play expansion; Phase 7 + Phase 1+ completion; publish deferred)
+**Last Updated**: Mar 16, 2026 (Phase 3 Last.fm provider + cache; Phase 2 Smart Play expansion; Phase 7 + Phase 1+ completion; publish deferred)
 
 | Phase | Status | % Complete | Notes |
 |-------|--------|-----------|-------|
 | 1 | ✓ COMPLETE | 100% | Project setup + initial docs |
 | 1+ | ✓ COMPLETE | 100% | SQLite history + history MCP tool |
 | 2 | ✓ COMPLETE | 100% | McpServer + 11 tools; play_song with search-result-scorer |
-| 3 | ✓ COMPLETE | 100% | MpvController + cross-platform IPC |
+| 3 | ✓ COMPLETE | 100% | MpvController + cross-platform IPC; Last.fm provider + cache |
 | 4 | ✓ COMPLETE | 100% | YouTubeProvider search() + getAudioUrl() |
 | 5 | ✓ COMPLETE | 100% | Web server + WebSocket dashboard |
 | 6 | ✓ COMPLETE | 100% | Curated mood pools + dashboard mood state |
 | 7 | ✓ COMPLETE | 100% | Queue manager + auto-advance + release prep |
-| **Overall** | **100%** | | MVP + history persistence + smart play complete; public publish deferred |
+| **Overall** | **100%** | | MVP + history persistence + smart play + Last.fm discovery complete; public publish deferred |
 
 ---
 

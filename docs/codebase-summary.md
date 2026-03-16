@@ -58,6 +58,8 @@ getTopTracks(limit?): TrackRecord[]                                     // Most 
 getTrackPlayCount(artist, title): number                                // Play count for track
 hoursSinceLastPlay(artist, title): number                               // For repetition penalty
 getSessionState() / saveSessionState(state: SessionState)               // Persistent session data
+getDatabase(): Database.Database                                         // Direct DB access for providers
+updateTrackTags(trackId: string, tags: string[]): void                 // Update Last.fm tags for track
 close(): void                                                            // Graceful shutdown
 ```
 
@@ -94,12 +96,12 @@ interface PlayContext {
 **Responsibility**: SQLite table definitions, indexes, and track normalization helper.
 
 ### `src/index.ts` — Entry Point
-**Status**: Phase 1+ UPDATE
+**Status**: Phase 3 UPDATE COMPLETE
 
 **Responsibility**: Bootstrap server, initialize all subsystems, handle graceful shutdown.
 
 **Key Functions**:
-- `main()`: Async entry; initializes history store (SQLite), queue, YouTube provider, mpv controller, browser dashboard, MCP server
+- `main()`: Async entry; initializes history store (SQLite), optional Last.fm provider (gated by LASTFM_API_KEY env var), queue, YouTube provider, mpv controller, browser dashboard, MCP server
 - `shutdown(signal)`: Handles SIGINT/SIGTERM; clears queue playback orchestration, closes history DB, destroys web server, then destroys mpv
 - Uses `console.error()` only (never `console.log()` — corrupts MCP stdio)
 
@@ -107,6 +109,10 @@ interface PlayContext {
 - Initializes `createHistoryStore()` first (non-fatal if DB creation fails)
 - Calls `getHistoryStore()?.close()` during graceful shutdown
 - Database automatically created at `~/.sbotify/history.db` on first run
+
+**Phase 3 Changes**:
+- Initializes `createLastFmProvider(apiKey, db)` if `LASTFM_API_KEY` env var is set (non-fatal if missing)
+- Last.fm provider optional; queue playback controller gracefully handles missing provider
 
 **Phase 7 Changes**:
 - Creates the queue playback controller before MCP bootstrap so `play`, `queue_add`, and `skip` share one playback path
@@ -231,6 +237,31 @@ export interface ScoredResult {
 }
 ```
 
+### `src/providers/lastfm-provider.ts` — Last.fm Discovery API
+**Status**: Phase 3 UPDATE COMPLETE
+
+**Responsibility**: Query Last.fm API for music discovery (similar artists, tracks, tags) with 7-day SQLite cache.
+
+**Implementation**:
+- `LastFmProvider` class wraps Last.fm API; caches responses in `lastfm_cache` table
+- 4 core async methods with cache-first retrieval:
+  - `getSimilarArtists(artist, limit?)`: Fetch artist recommendations
+  - `getSimilarTracks(artist, track, limit?)`: Fetch similar track recommendations
+  - `getTopTags(artist, track?)`: Fetch tags for artist or track
+  - `getTopTracksByTag(tag, limit?)`: Fetch top tracks in a genre/tag
+- Cache eviction: 7-day TTL; expired rows deleted on startup
+- YouTube metadata normalization: `normalizeForQuery()` strips official/lyric/live/ft. suffixes before querying
+- Singleton pattern: `createLastFmProvider(apiKey, db)` + `getLastFmProvider()`
+- Non-fatal: returns empty arrays if API call fails or times out (5s timeout)
+
+**Key Types**:
+```typescript
+export interface SimilarArtist { name: string; match: number }  // 0-1 score
+export interface SimilarTrack { title: string; artist: string; match: number }
+export interface Tag { name: string; count: number }
+export interface TagTrack { title: string; artist: string }
+```
+
 ### `src/providers/youtube-provider.ts` — YouTube Integration
 **Status**: Phase 7 UPDATE
 
@@ -335,9 +366,9 @@ export interface AudioInfo {
 **Persistence**: Session-only (no disk storage in MVP)
 
 ### `src/queue/queue-playback-controller.ts` — Queue Playback Orchestration
-**Status**: Phase 7 COMPLETE
+**Status**: Phase 3 UPDATE COMPLETE
 
-**Responsibility**: Centralize playback transitions so manual play, manual skip, and natural track end all use the same queue-aware path.
+**Responsibility**: Centralize playback transitions so manual play, manual skip, and natural track end all use the same queue-aware path. Async tag enrichment from Last.fm on every play (fire-and-forget).
 
 **Key Functions**:
 ```typescript
@@ -353,6 +384,10 @@ clearForShutdown(): void
 - Updates queue manager before and after playback transitions
 - Ignores duplicate `stopped` handling during manual skip
 - Opens the dashboard once on first successful playback
+- **Phase 3 Update**: On every track play, asynchronously enriches track record with Last.fm tags (fire-and-forget, does not block playback)
+  - Fetches `getTopTags(artist, track)` from Last.fm provider
+  - Stores tags in track record via `updateTrackTags(trackId, tagNames)`
+  - Non-blocking: tag fetch happens after playback starts
 
 ### `src/mood/mood-presets.ts` — Mood Keywords
 **Status**: Phase 6 COMPLETE
