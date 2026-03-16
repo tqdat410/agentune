@@ -36,16 +36,17 @@ Phase 1 (Setup)
 |-------|----------|--------|-------|-----|
 | 1. Setup | 1 day | ✓ COMPLETE | Mar 15 | Mar 15 |
 | 1+. SQLite History | 1 day | ✓ COMPLETE | Mar 15 | Mar 15 |
-| 2. MCP Server | 1 day | ✓ COMPLETE | Mar 15 | Mar 15 |
+| 2. MCP Server + Smart Play | 1 day | ✓ COMPLETE | Mar 15 | Mar 16 |
 | 3. Audio Engine | 1 day | ✓ COMPLETE | Mar 15 | Mar 15 |
 | 4. YouTube | 1 day | ✓ COMPLETE | Mar 15 | Mar 15 |
 | 5. Dashboard | 1 day | ✓ COMPLETE | Mar 15 | Mar 15 |
 | 6. Mood Mode | 1 day | ✓ COMPLETE | Mar 15 | Mar 15 |
 | 7. Queue + Polish | 1 day | ✓ COMPLETE | Mar 15 | Mar 15 |
-| **Total** | **~8 days** | **100%** | **Mar 15** | **Mar 15** |
+| **Total** | **~8 days** | **100%** | **Mar 15** | **Mar 16** |
 
 **Notes**:
 - Phases 1–5 complete: Agent can search/play songs and expose a live browser dashboard
+- Phase 2 expanded (Mar 16): Added play_song tool with fuzzy-matching search result scorer for high-confidence playback
 - Phase 5 completed in 1 day with fallback port handling and WebSocket state sync
 - Phase 6 completed with curated mood pools, case-insensitive mood input, and dashboard mood state
 - Phase 7 completed with real queue playback, history, auto-advance, and release-prep files
@@ -158,38 +159,49 @@ close(): void
 
 ---
 
-## Phase 2: MCP Server & Tool Definitions (COMPLETE)
+## Phase 2: MCP Server & Tool Definitions + Smart Play (COMPLETE)
 
-**Status**: ✓ COMPLETE (Mar 15)
+**Status**: ✓ COMPLETE (Mar 15–16)
 
 **Objectives**:
 - [x] Implement `McpServer` initialization
-- [x] Define 10 MCP tool schemas (Zod)
-- [x] Implement tool request handlers (10 tools)
+- [x] Define 11 MCP tool schemas (Zod) — includes new play_song tool
+- [x] Implement tool request handlers (11 tools)
 - [x] Ensure stdio safety (no console.log())
 - [x] Add graceful error handling for all tools
+- [x] Implement fuzzy-matching search result scorer (Phase 2 extension)
+- [x] Wire play_song tool with scoring and fallback queries
 
 **Deliverables**:
-- [x] `src/mcp/mcp-server.ts` — Full implementation (118 LOC)
-- [x] `src/mcp/tool-handlers.ts` — 10 handler functions (122 LOC)
-- [x] Tool definitions for: search, play, play_mood, pause, resume, skip, queue_add, queue_list, now_playing, volume
+- [x] `src/mcp/mcp-server.ts` — Full implementation (11 tools)
+- [x] `src/mcp/tool-handlers.ts` — 11 handler functions with play_song implementation
+- [x] `src/providers/search-result-scorer.ts` — Fuzzy-match scoring for YouTube results (130 LOC)
+- [x] Tool definitions for: search, play, play_song, play_mood, pause, resume, skip, queue_add, queue_list, now_playing, volume
 - [x] Error handling with `{content: [{type: "text", text: "..."}], isError?: boolean}` structure (MCP SDK standard)
 - [x] Zod schemas for all tool inputs
 - [x] Exported `MOOD_VALUES` const and `Mood` type
+- [x] queue_add updated to accept optional video ID for direct queuing
 
 **Key Functions** (in tool-handlers.ts):
 ```typescript
 export async function handleSearch(args: {query, limit?}): Promise<ToolResult>
 export async function handlePlay(args: {id}): Promise<ToolResult>
+export async function handlePlaySong(args: {title, artist?}): Promise<ToolResult>  // NEW
 export async function handlePlayMood(args: {mood}): Promise<ToolResult>
 export async function handlePause(): Promise<ToolResult>
 export async function handleResume(): Promise<ToolResult>
 export async function handleSkip(): Promise<ToolResult>
-export async function handleQueueAdd(args: {query}): Promise<ToolResult>
+export async function handleQueueAdd(args: {query?, id?}): Promise<ToolResult>  // Updated
 export async function handleQueueList(): Promise<ToolResult>
 export async function handleNowPlaying(): Promise<ToolResult>
 export async function handleVolume(args: {level?}): Promise<ToolResult>
 ```
+
+**Search Result Scoring** (new in Phase 2):
+- Title matching: exact (1.0), starts-with (0.8), contains (0.6), word-overlap (~0.4)
+- Artist match bonus: +0.3
+- Quality penalties: live (-0.3), remix (-0.25), slowed/8d/reverb (-0.4), long duration >600s (-0.2)
+- Quality bonuses: official audio (+0.15), topic/auto-generated (+0.10), typical song length (+0.05)
 
 **Dependencies**:
 - Phase 1 (Setup) — COMPLETE
@@ -689,19 +701,19 @@ export class QueueManager {
 
 ## Progress Tracking
 
-**Last Updated**: Mar 15, 2026 (Phase 7 + Phase 1+ completion; publish deferred)
+**Last Updated**: Mar 16, 2026 (Phase 2 Smart Play expansion; Phase 7 + Phase 1+ completion; publish deferred)
 
 | Phase | Status | % Complete | Notes |
 |-------|--------|-----------|-------|
 | 1 | ✓ COMPLETE | 100% | Project setup + initial docs |
 | 1+ | ✓ COMPLETE | 100% | SQLite history + history MCP tool |
-| 2 | ✓ COMPLETE | 100% | McpServer + 11 tool definitions |
+| 2 | ✓ COMPLETE | 100% | McpServer + 11 tools; play_song with search-result-scorer |
 | 3 | ✓ COMPLETE | 100% | MpvController + cross-platform IPC |
 | 4 | ✓ COMPLETE | 100% | YouTubeProvider search() + getAudioUrl() |
 | 5 | ✓ COMPLETE | 100% | Web server + WebSocket dashboard |
 | 6 | ✓ COMPLETE | 100% | Curated mood pools + dashboard mood state |
 | 7 | ✓ COMPLETE | 100% | Queue manager + auto-advance + release prep |
-| **Overall** | **100%** | | MVP + history persistence complete; public publish deferred |
+| **Overall** | **100%** | | MVP + history persistence + smart play complete; public publish deferred |
 
 ---
 

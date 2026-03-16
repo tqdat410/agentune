@@ -32,29 +32,36 @@ export class QueuePlaybackController {
     });
   }
 
-  async playById(id: string, extraMeta?: { mood?: Mood }): Promise<QueueItem> {
+  async playById(
+    id: string,
+    extraMeta?: { mood?: Mood; canonicalArtist?: string; canonicalTitle?: string },
+  ): Promise<QueueItem> {
     const audio = await this.youtubeProvider.getAudioUrl(id);
     const queueItem: QueueItem = {
       id,
-      title: audio.title,
-      artist: audio.artist,
+      title: extraMeta?.canonicalTitle ?? audio.title,
+      artist: extraMeta?.canonicalArtist ?? audio.artist,
       duration: audio.duration,
       thumbnail: audio.thumbnail,
       url: `https://www.youtube.com/watch?v=${id}`,
-      ...extraMeta,
+      mood: extraMeta?.mood,
     };
 
     this.mpv.play(audio.streamUrl, queueItem);
     this.queueManager.setNowPlaying(queueItem);
     getWebServer()?.openDashboardOnce();
 
-    // Record play in history store
+    // Record play in history store — use canonical override when available
     try {
       const store = getHistoryStore();
       if (store) {
+        const canonical = extraMeta?.canonicalArtist && extraMeta?.canonicalTitle
+          ? { artist: extraMeta.canonicalArtist, title: extraMeta.canonicalTitle }
+          : undefined;
         this.currentPlayId = store.recordPlay(
           { title: queueItem.title, artist: queueItem.artist, duration: queueItem.duration, thumbnail: queueItem.thumbnail, ytVideoId: id },
           { mood: queueItem.mood, source: 'playById' },
+          canonical,
         );
       }
     } catch (err) {

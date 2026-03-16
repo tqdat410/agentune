@@ -1,5 +1,22 @@
 # Project Changelog
 
+## 2026-03-16
+
+### Phase 2: Smart Play (play_song + Search Result Scorer)
+- Added `src/providers/search-result-scorer.ts` — fuzzy-match scoring module for YouTube search results
+  - Scores titles, artists, duration, and applies quality penalties (live, remix, slowed, 8d) and bonuses (official audio, topic/auto-generated)
+  - Returns scored results sorted by confidence (0–2 scale)
+  - Strips quality suffixes and normalizes for robust comparison
+- Added new MCP tool `play_song(title, artist?)` to `src/mcp/mcp-server.ts` and `handlePlaySong` to `src/mcp/tool-handlers.ts`
+  - Primary query: `"{artist} - {title} official audio"` (searches 10 results)
+  - Fallback query: `"{artist} {title}"` if top score below 0.2 minimum
+  - Returns `{matched, nowPlaying, matchScore, matchReasons, alternatives}` for transparency
+  - Uses canonical artist/title overrides to ensure accurate history recording
+- Updated `queue_add` tool to accept optional `id` parameter for direct video ID queuing (alongside existing `query` parameter)
+- Updated `YouTube` search default limit from 5 to 10 when used in play_song flow for better match options
+- Extended `playById` in queue-playback-controller to accept optional `canonicalArtist` and `canonicalTitle` for override history recording
+- All 60 unit tests passing; build clean; no new dependencies added
+
 ## 2026-03-15
 
 ### Phase 1+: SQLite History Foundation

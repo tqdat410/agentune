@@ -7,6 +7,7 @@ import { MOOD_VALUES } from "../mood/mood-presets.js";
 import {
   handleSearch,
   handlePlay,
+  handlePlaySong,
   handlePlayMood,
   handlePause,
   handleResume,
@@ -31,7 +32,7 @@ export async function createMcpServer(): Promise<McpServer> {
     "Search YouTube for music. Returns multiple results — pick the best match based on title/artist accuracy, prefer 'official audio' or 'topic' versions.",
     {
       query: z.string().describe("Search query for YouTube music"),
-      limit: z.number().min(1).max(10).optional().default(5).describe("Max results to return (1-10)"),
+      limit: z.number().min(1).max(10).optional().default(10).describe("Max results to return (1-10)"),
     },
     async (args) => handleSearch(args),
   );
@@ -43,6 +44,18 @@ export async function createMcpServer(): Promise<McpServer> {
       id: z.string().describe("YouTube video ID to play"),
     },
     async (args) => handlePlay(args),
+  );
+
+  server.tool(
+    "play_song",
+    "Play a specific song by title and artist. Resolves to the best YouTube version automatically. " +
+    "Always include artist for accuracy. " +
+    "The resolver validates title/artist match and prefers official audio versions.",
+    {
+      title: z.string().min(1).describe("Song title, e.g. 'Says' or 'Bohemian Rhapsody'"),
+      artist: z.string().optional().describe("Artist name, e.g. 'Nils Frahm' — strongly recommended for accuracy"),
+    },
+    async (args) => handlePlaySong(args),
   );
 
   server.tool(
@@ -77,9 +90,10 @@ export async function createMcpServer(): Promise<McpServer> {
 
   server.tool(
     "queue_add",
-    "Search for a track and add it to the play queue",
+    "Add a track to the play queue. Provide either a search query or a video ID.",
     {
-      query: z.string().describe("Search query to find and queue a track"),
+      query: z.string().optional().describe("Search query to find and queue a track"),
+      id: z.string().optional().describe("YouTube video ID to queue directly"),
     },
     async (args) => handleQueueAdd(args),
   );

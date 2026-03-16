@@ -4,6 +4,7 @@ import { getMpvController } from '../audio/mpv-controller.js';
 import { getHistoryStore } from '../history/history-store.js';
 import type { Mood } from '../mood/mood-presets.js';
 import { getRandomMoodQuery, getMoodQueries, MOOD_VALUES, normalizeMood } from '../mood/mood-presets.js';
+import { scoreSearchResults } from '../providers/search-result-scorer.js';
 import { getYoutubeProvider } from '../providers/youtube-provider.js';
 import { getQueuePlaybackController } from '../queue/queue-playback-controller.js';
 import { getQueueManager } from '../queue/queue-manager.js';
@@ -19,7 +20,7 @@ function errorResult(message: string): ToolResult {
   return { content: [{ type: "text", text: message }], isError: true };
 }
 
-async function playResolvedTrack(id: string, extraMeta?: { mood?: Mood }): Promise<{
+async function playResolvedTrack(id: string, extraMeta?: { mood?: Mood; canonicalArtist?: string; canonicalTitle?: string }): Promise<{
   meta: {
     id: string;
     title: string;
@@ -78,6 +79,65 @@ export async function handlePlay(args: { id: string }): Promise<ToolResult> {
     });
   } catch (err) {
     return errorResult(`Play failed: ${(err as Error).message}`);
+  }
+}
+
+export async function handlePlaySong(args: { title: string; artist?: string }): Promise<ToolResult> {
+  try {
+    const yt = getYoutubeProvider();
+    if (!yt) return errorResult('YouTube provider not initialized.');
+
+    const { title, artist } = args;
+    const MIN_SCORE = 0.2;
+
+    // Build primary query: prefer "artist - title official audio" when artist given
+    const primaryQuery = artist ? `${artist} - ${title} official audio` : `${title} official audio`;
+    let results = await yt.search(primaryQuery, 10);
+    let scored = scoreSearchResults(results, title, artist);
+
+    // Fallback query if top score too low and artist was provided
+    if ((scored.length === 0 || scored[0].score < MIN_SCORE) && artist) {
+      const fallbackQuery = `${artist} ${title}`;
+      results = await yt.search(fallbackQuery, 10);
+      scored = scoreSearchResults(results, title, artist);
+    }
+
+    if (scored.length === 0 || scored[0].score < MIN_SCORE) {
+      const label = artist ? `"${title}" by ${artist}` : `"${title}"`;
+      return textResult({
+        matched: false,
+        message: `No good match found for ${label}. Top score: ${scored[0]?.score ?? 0}.`,
+        alternatives: scored.slice(0, 3).map((s) => ({
+          id: s.result.id,
+          title: s.result.title,
+          artist: s.result.artist,
+          score: s.score,
+          reasons: s.reasons,
+        })),
+      });
+    }
+
+    const best = scored[0];
+    const { meta } = await playResolvedTrack(best.result.id, {
+      canonicalArtist: artist,
+      canonicalTitle: title,
+    });
+
+    return textResult({
+      matched: true,
+      nowPlaying: meta,
+      matchScore: best.score,
+      matchReasons: best.reasons,
+      alternatives: scored.slice(1, 4).map((s) => ({
+        id: s.result.id,
+        title: s.result.title,
+        artist: s.result.artist,
+        score: s.score,
+      })),
+      message: `Now playing: ${meta.title} by ${meta.artist} (match score: ${best.score})`,
+    });
+  } catch (err) {
+    return errorResult(`Play song failed: ${(err as Error).message}`);
   }
 }
 
@@ -153,12 +213,42 @@ export async function handleSkip(): Promise<ToolResult> {
   }
 }
 
-export async function handleQueueAdd(args: { query: string }): Promise<ToolResult> {
+export async function handleQueueAdd(args: { query?: string; id?: string }): Promise<ToolResult> {
   try {
+    if (!args.query && !args.id) {
+      return errorResult('Provide either a search query or a video ID.');
+    }
+
     const queuePlaybackController = getQueuePlaybackController();
     if (!queuePlaybackController) return errorResult('Queue playback controller not initialized.');
 
-    const { item, position } = await queuePlaybackController.queueByQuery(args.query);
+    // Queue by video ID directly
+    if (args.id) {
+      const queueManager = getQueueManager();
+      if (!queueManager) return errorResult('Queue manager not initialized.');
+
+      const yt = getYoutubeProvider();
+      if (!yt) return errorResult('YouTube provider not initialized.');
+
+      const audio = await yt.getAudioUrl(args.id);
+      const item = {
+        id: args.id,
+        title: audio.title,
+        artist: audio.artist,
+        duration: audio.duration,
+        thumbnail: audio.thumbnail,
+        url: `https://www.youtube.com/watch?v=${args.id}`,
+      };
+      const position = queueManager.add(item);
+      return textResult({
+        added: item,
+        position,
+        message: `Added ${item.title} by ${item.artist} to queue.`,
+      });
+    }
+
+    // Queue by search query
+    const { item, position } = await queuePlaybackController.queueByQuery(args.query!);
     return textResult({
       added: item,
       position,

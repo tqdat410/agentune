@@ -117,25 +117,27 @@ interface PlayContext {
 **Shebang**: `#!/usr/bin/env node` enables direct CLI invocation
 
 ### `src/mcp/mcp-server.ts` — MCP Protocol
-**Status**: Phase 2 COMPLETE (118 LOC)
+**Status**: Phase 2+ COMPLETE (expanded to 11 tools)
 
-**Responsibility**: Initialize McpServer, register 10 MCP tool schemas, handle agent requests via stdio.
+**Responsibility**: Initialize McpServer, register 11 MCP tool schemas, handle agent requests via stdio.
 
 **Implementation**:
 - `createMcpServer()`: Async entry; initializes McpServer instance
-- Registers 10 tools with Zod schemas: search, play, play_mood, pause, resume, skip, queue_add, queue_list, now_playing, volume
+- Registers 11 tools with Zod schemas: search, play, play_song, play_mood, pause, resume, skip, queue_add, queue_list, now_playing, volume
 - StdioServerTransport for agent communication
 - Mood values now come from `src/mood/mood-presets.ts`; tool schema accepts a string and normalizes in the handler
+- **Phase 2**: New `play_song` tool accepts `title` (required) and optional `artist` for high-accuracy song playback via fuzzy matching
 
-**Tool Definitions** (Phase 2 complete):
+**Tool Definitions** (Phase 2+ complete):
 ```
 • search(query, limit?) → {results: [], message: string}
 • play(id) → {nowPlaying: {id, title, artist, duration}, message: string}
+• play_song(title, artist?) → {matched, nowPlaying, matchScore, alternatives} — NEW (Phase 2)
 • play_mood(mood: string) → normalizes mood, selects curated query, auto-plays preset
 • pause() → {status: "paused", message: string}
 • resume() → {status: "playing", message: string}
 • skip() → {message: string}
-• queue_add(query) → {added: Track, position: number}
+• queue_add(query?, id?) → {added: Track, position: number} — Updated: accepts optional video ID
 • queue_list() → {queue: Track[]}
 • now_playing() → {nowPlaying: Track | null}
 • volume(level?) → {volume: number}
@@ -144,14 +146,19 @@ interface PlayContext {
 **Return Structure**: `{content: [{type: "text", text: "..."}], isError?: boolean}` (MCP SDK standard)
 
 ### `src/mcp/tool-handlers.ts` — Tool Implementation
-**Status**: Phase 7 COMPLETE
+**Status**: Phase 2+ COMPLETE
 
-**Responsibility**: Handler functions for all 10 MCP tools; wired to YouTube provider, queue playback controller, mpv controller, and dashboard auto-open.
+**Responsibility**: Handler functions for all 11 MCP tools; wired to YouTube provider, queue playback controller, mpv controller, and dashboard auto-open.
 
 **Implementation**:
-- 10 async handler functions: `handleSearch`, `handlePlay`, `handlePlayMood`, `handlePause`, `handleResume`, `handleSkip`, `handleQueueAdd`, `handleQueueList`, `handleNowPlaying`, `handleVolume`
+- 11 async handler functions: `handleSearch`, `handlePlay`, `handlePlaySong`, `handlePlayMood`, `handlePause`, `handleResume`, `handleSkip`, `handleQueueAdd`, `handleQueueList`, `handleNowPlaying`, `handleVolume`
 - `ToolResult` type: `{content: ToolContent[], isError?: boolean}`
 - Helper functions: `textResult()`, `errorResult()` for response formatting
+- **Phase 2**: New `handlePlaySong(title, artist?)` uses search-result-scorer to find best YouTube match
+  - Searches with primary query: `"{artist} - {title} official audio"` (with 10-result limit)
+  - Falls back to `"{artist} {title}"` if top score < 0.2 minimum
+  - Returns scored match with alternatives or structured no-match response
+  - Uses canonical artist/title overrides to accurate history recording
 - **Phase 5 Wiring**: Successful `play` opens the browser dashboard once per process
 - **Phase 6**: Mood handler now normalizes case-insensitive input and plays a curated random query from the selected mood pool
 - **Phase 7**: `play`, `queue_add`, `queue_list`, and `skip` now use real queue state and playback orchestration
@@ -200,6 +207,30 @@ destroy(): void                          // Graceful shutdown
 
 **Error Handling**: Returns errors if not initialized; graceful mpv quit on destroy; emits `state-change` events for dashboard updates and re-emits playback lifecycle events such as `stopped`
 
+### `src/providers/search-result-scorer.ts` — YouTube Search Scoring
+**Status**: Phase 2 COMPLETE
+
+**Responsibility**: Score and rank YouTube search results by fuzzy-matching title/artist against canonical metadata; select best match for high-confidence playback.
+
+**Implementation**:
+- `scoreSearchResults(results, title, artist?)`: Score and rank results by confidence
+- Scoring algorithm:
+  - Title matching (0-1): exact match (1.0), starts with (0.8), contains (0.6), word overlap (~0.4)
+  - Artist bonus (+0.3): if channel name matches provided artist
+  - Quality penalties: live (-0.3), remix (-0.25), slowed/8d/reverb (-0.4); long duration >600s (-0.2)
+  - Quality bonuses: "official audio" (+0.15), topic/auto-generated (+0.10), typical song length 120–420s (+0.05)
+- Helper functions: `normalize()`, `stripQualitySuffixes()`, `wordOverlap()`, `scoreTitleMatch()`
+- Returns `ScoredResult[]` with score (0-2 range, rounded to hundredths) and reason strings
+
+**Data Structure**:
+```typescript
+export interface ScoredResult {
+  result: SearchResult;
+  score: number;        // 0–2 (0.00, 0.50, 1.30, etc.)
+  reasons: string[];    // ["title: exact match (1.00)", "artist match (+0.30)", ...]
+}
+```
+
 ### `src/providers/youtube-provider.ts` — YouTube Integration
 **Status**: Phase 7 UPDATE
 
@@ -207,7 +238,7 @@ destroy(): void                          // Graceful shutdown
 
 **Implementation**:
 - `YouTubeProvider` class with two core methods
-- `search(query, limit?)`: Async search via ytsr; filters to videos only; returns up to `limit` results
+- `search(query, limit?)`: Async search via ytsr; filters to videos only; default limit 5 (increased to 10 in play_song scorer flow)
 - `getAudioUrl(videoId/Url)`: Async extraction via youtube-dl-exec; returns stream URL + metadata
 - Singleton pattern: `createYoutubeProvider()` + `getYoutubeProvider()`
 
@@ -417,6 +448,8 @@ if (!found) return {isError: true, message: "Video not found"};
 | better-sqlite3 | Persistent play history | 1+ |
 | zod | Schema validation | 2 |
 | typescript | Transpilation + types | All |
+
+**Phase 2 Additions**: No new dependencies (search-result-scorer is pure TypeScript)
 
 ## Compilation & Distribution
 
