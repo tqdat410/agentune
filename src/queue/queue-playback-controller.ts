@@ -5,6 +5,7 @@ import type { Mood } from '../mood/mood-presets.js';
 import { getLastFmProvider } from '../providers/lastfm-provider.js';
 import type { YouTubeProvider } from '../providers/youtube-provider.js';
 import type { SearchResult } from '../providers/youtube-provider.js';
+import { getTasteEngine } from '../taste/taste-engine.js';
 import { getWebServer } from '../web/web-server.js';
 import type { QueueItem, QueueManager } from './queue-manager.js';
 
@@ -88,13 +89,24 @@ export class QueuePlaybackController {
   }
 
   async skip(): Promise<QueueItem | null> {
-    // Record skip in history before stopping
+    // Record skip in history + taste feedback before stopping
     if (this.currentPlayId !== null) {
       try {
         const store = getHistoryStore();
+        const nowPlaying = this.queueManager.getNowPlaying();
         if (store) {
           const position = await this.mpv.getPosition().catch(() => 0);
           store.updatePlay(this.currentPlayId, { played_sec: Math.round(position), skipped: true });
+
+          // Taste feedback: skip signal
+          if (nowPlaying) {
+            getTasteEngine()?.processFeedback(
+              { artist: nowPlaying.artist, title: nowPlaying.title, duration: nowPlaying.duration },
+              Math.round(position),
+              nowPlaying.duration,
+              true,
+            );
+          }
         }
       } catch (err) {
         console.error('[sbotify] Failed to record skip:', (err as Error).message);
@@ -129,13 +141,21 @@ export class QueuePlaybackController {
       return;
     }
 
-    // Record natural finish in history — use track duration since mpv resets position on stop
+    // Record natural finish in history + taste feedback
     if (this.currentPlayId !== null) {
       try {
         const store = getHistoryStore();
         const nowPlaying = this.queueManager.getNowPlaying();
         if (store && nowPlaying) {
           store.updatePlay(this.currentPlayId, { played_sec: nowPlaying.duration, skipped: false });
+
+          // Taste feedback: full play signal
+          getTasteEngine()?.processFeedback(
+            { artist: nowPlaying.artist, title: nowPlaying.title, duration: nowPlaying.duration },
+            nowPlaying.duration,
+            nowPlaying.duration,
+            false,
+          );
         }
       } catch (err) {
         console.error('[sbotify] Failed to record finish:', (err as Error).message);
@@ -148,19 +168,20 @@ export class QueuePlaybackController {
   }
 
   /** Fetch tags from Last.fm and update track record (fire-and-forget). */
-  private enrichTrackTags(artist: string, title: string): void {
+  private async enrichTrackTags(artist: string, title: string): Promise<void> {
     const lastfm = getLastFmProvider();
     const store = getHistoryStore();
     if (!lastfm || !store) return;
 
-    lastfm.getTopTags(artist, title).then((tags) => {
+    try {
+      const tags = await lastfm.getTopTags(artist, title);
       if (tags.length === 0) return;
       const trackId = normalizeTrackId(artist, title);
       const tagNames = tags.slice(0, 10).map((t) => t.name);
       store.updateTrackTags(trackId, tagNames);
-    }).catch((err) => {
+    } catch (err) {
       console.error('[sbotify] Tag enrichment failed:', (err as Error).message);
-    });
+    }
   }
 
   private async playNextQueuedTrack(): Promise<QueueItem | null> {

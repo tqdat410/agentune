@@ -23,29 +23,30 @@ sbotify is a three-tier system:
 │  │  ├─ Tool Definitions (search, play, skip, ...)  │  │
 │  │  └─ stdio Transport (agent ↔ server)            │  │
 │  └──────────────────────────────────────────────────┘  │
-│          │               │              │               │
-│          ▼               ▼              ▼               │
+│          │               │              │       │       │
+│          ▼               ▼              ▼       ▼       │
 │  ┌─────────────┐ ┌─────────────┐ ┌──────────────┐    │
 │  │  YouTube    │ │ Queue       │ │ Mood         │    │
 │  │  Provider   │ │ Manager     │ │ Presets      │    │
 │  │ (Phase 4)   │ │ (Phase 7)   │ │ (Phase 6)    │    │
 │  └─────────────┘ └─────────────┘ └──────────────┘    │
 │          │               │                              │
-│          ├───────┬───────┤                              │
-│          │       │       │                              │
-│          │       ▼       │                              │
-│          │  ┌──────────────────┐                      │
-│          │  │ Last.fm Provider │                      │
-│          │  │ (Phase 3)        │                      │
-│          │  └──────────────────┘                      │
-│          │       │                                     │
-│          └───────┴───────┐                              │
-│                  ▼                                      │
-│  ┌──────────────────────────┐                         │
-│  │ mpv Controller (Phase 3) │                         │
-│  │ ├─ JSON IPC Protocol     │                         │
-│  │ └─ Playback Control      │                         │
-│  └──────────────────────────┘                         │
+│          ├───────┬───────┤        ┌────────────────┐  │
+│          │       │       │        │ Taste Engine   │  │
+│          │       ▼       │        │ (Phase 4)      │  │
+│          │  ┌──────────────────┐  ├─ Implicit      │  │
+│          │  │ Last.fm Provider │  │   feedback     │  │
+│          │  │ (Phase 3)        │  ├─ Session lanes │  │
+│          │  └──────────────────┘  ├─ Agent persona │  │
+│          │       │                 └────────────────┘  │
+│          └───────┴───────────────────┐                  │
+│                  ▼                    ▼                 │
+│  ┌──────────────────────────────────────────────┐     │
+│  │ mpv Controller (Phase 3)                     │     │
+│  │ ├─ JSON IPC Protocol                        │     │
+│  │ ├─ Playback Control                         │     │
+│  │ └─ Feedback signals (skip, finish) → Taste  │     │
+│  └──────────────────────────────────────────────┘     │
 │          │                                             │
 │          └──────────────┬──────────────┐              │
 │                         │              │              │
@@ -320,6 +321,39 @@ getState()     → Snapshot for MCP + dashboard
 - Set queue state before calling mpv playback
 - Mark manual skip in-flight so mpv `stopped` does not double-advance
 - Trigger dashboard auto-open once on first successful playback
+
+### 4.6 Taste Engine (Phase 4) — NEW
+
+**Purpose**: Track user taste preferences through implicit feedback signals and manage session lanes for mood continuity.
+
+**Key Components**:
+- **Taste State**: Obsessions (artist/tag affinity 0-1), boredom (fatigue 0-1), cravings (active tag interests), novelty appetite, repeat tolerance
+- **Agent Persona**: Separate from user preferences; controls playback style (curiosity, dramatic transition, callback love, anti-monotony)
+- **Session Lanes**: Groups 2-5 consecutive songs by tag overlap; pivots when mood shifts significantly
+- **Time-based Decay**: Values decay via `value * 0.95^hours` for natural preference evolution
+
+**Data Flow**:
+```
+1. Track finishes or is skipped
+   └─ QueuePlaybackController calls taste.processFeedback(track, playedSec, totalSec, skipped)
+
+2. TasteEngine updates:
+   ├─ Apply time decay to obsessions/boredom
+   ├─ Adjust artist/tag obsession/boredom based on completion ratio
+   ├─ Update cravings from top tags
+   ├─ Update session lane based on tag overlap (30% threshold)
+   ├─ Evolve agent persona (+1% per play)
+   └─ Persist state to session_state table
+
+3. MCP tool get_session_state returns:
+   ├─ Top 5 obsessions + boredom entries
+   ├─ Current cravings + appetite/tolerance values
+   ├─ Agent persona snapshot
+   ├─ Active session lane (description, tags, song count)
+   └─ Recent 5 plays with completion metrics
+```
+
+**Persistence**: All state persisted to `session_state` table on every feedback event (non-blocking)
 
 ### 5. Mood Presets (Phase 6)
 

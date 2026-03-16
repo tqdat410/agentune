@@ -38,18 +38,21 @@ Phase 1 (Setup)
 | 1+. SQLite History | 1 day | ✓ COMPLETE | Mar 15 | Mar 15 |
 | 2. MCP Server + Smart Play | 1 day | ✓ COMPLETE | Mar 15 | Mar 16 |
 | 3. Audio Engine | 1 day | ✓ COMPLETE | Mar 15 | Mar 15 |
-| 4. YouTube | 1 day | ✓ COMPLETE | Mar 15 | Mar 15 |
+| 3.5. Last.fm Provider + Cache | 0.5 days | ✓ COMPLETE | Mar 16 | Mar 16 |
+| 4. YouTube + Taste Intelligence | 1 day | ✓ COMPLETE | Mar 15 | Mar 16 |
 | 5. Dashboard | 1 day | ✓ COMPLETE | Mar 15 | Mar 15 |
 | 6. Mood Mode | 1 day | ✓ COMPLETE | Mar 15 | Mar 15 |
 | 7. Queue + Polish | 1 day | ✓ COMPLETE | Mar 15 | Mar 15 |
-| **Total** | **~8 days** | **100%** | **Mar 15** | **Mar 16** |
+| **Total** | **~9 days** | **100%** | **Mar 15** | **Mar 16** |
 
 **Notes**:
-- Phases 1–5 complete: Agent can search/play songs and expose a live browser dashboard
-- Phase 2 expanded (Mar 16): Added play_song tool with fuzzy-matching search result scorer for high-confidence playback
-- Phase 5 completed in 1 day with fallback port handling and WebSocket state sync
-- Phase 6 completed with curated mood pools, case-insensitive mood input, and dashboard mood state
-- Phase 7 completed with real queue playback, history, auto-advance, and release-prep files
+- Phases 1–4 complete: Agent-driven music control with taste intelligence and session lanes
+- Phase 2 expanded (Mar 16): Added play_song tool with fuzzy-matching search result scorer
+- Phase 3.5 added (Mar 16): Last.fm provider + 7-day SQLite cache for music discovery
+- Phase 4 expanded (Mar 16): YouTube provider + TasteEngine with implicit feedback, session lanes, agent persona
+- Phase 5 completed: Live browser dashboard with real-time updates
+- Phase 6 completed: Curated mood pools (focus, energetic, chill, debug, ship)
+- Phase 7 completed: Real queue playback, history, auto-advance, and release-prep files
 - Public npm publish remains deferred by user request
 
 ## Phase 1+: SQLite History Foundation (COMPLETE)
@@ -311,9 +314,9 @@ export function createMpvController(): MpvController (singleton)
 
 ---
 
-## Phase 4: YouTube Provider (COMPLETE)
+## Phase 4: YouTube Provider + Taste Intelligence (COMPLETE)
 
-**Status**: ✓ COMPLETE (Mar 15)
+**Status**: ✓ COMPLETE (Mar 15–16)
 
 **Objectives** ✓:
 - [x] Implement YouTube search via @distube/ytsr
@@ -321,45 +324,71 @@ export function createMpvController(): MpvController (singleton)
 - [x] Format metadata (title, artist, duration, thumbnail, URL)
 - [x] Handle no-results gracefully
 - [x] Singleton provider pattern for reusability
+- [x] Implement taste engine for implicit feedback + session lanes
+- [x] Process skip/completion signals for taste state evolution
+- [x] Support agent persona separate from user preferences
+- [x] Wire taste feedback into queue playback controller
 
 **Deliverables** ✓:
 - [x] `src/providers/youtube-provider.ts` — Full implementation (95 LOC)
-- [x] YouTubeProvider class with search() and getAudioUrl() methods
-- [x] SearchResult interface (id, title, artist, duration, thumbnail, url)
-- [x] AudioInfo interface (streamUrl, title, artist, duration, thumbnail)
-- [x] Duration parsing helper (string "3:45" → milliseconds)
-- [x] Singleton pattern with createYoutubeProvider() / getYoutubeProvider()
-- [x] Error handling for empty queries and invalid video IDs
+  - YouTubeProvider class with search() and getAudioUrl() methods
+  - SearchResult and AudioInfo interfaces
+  - Duration parsing helper (string "3:45" → milliseconds)
+- [x] `src/taste/taste-engine.ts` — Taste intelligence (340 LOC)
+  - TasteEngine class with taste state, agent persona, session lanes
+  - Implicit feedback processing: skip ratio + completion rate → obsession/boredom adjustments
+  - Time-based decay: `value * 0.95^hours` for natural preference evolution
+  - Session lanes: groups 2-5 songs by tag overlap (30% threshold); pivots on mood shift
+  - Agent persona evolution: curiosity, dramaticTransition, callbackLove, antiMonotony
+  - getSummary() for get_session_state MCP tool
+- [x] `src/taste/taste-engine.test.ts` — Unit tests for taste state transitions
+- [x] Updated `src/queue/queue-playback-controller.ts` — feedback wiring
+  - Calls `taste.processFeedback()` on skip and natural finish events
+  - Passes completion metrics + tag data for taste evolution
+- [x] Extended `src/history/history-store.ts` with `getTrackTags()` method
+- [x] Extended `src/mcp/mcp-server.ts` with new `get_session_state` tool
 
 **Key Implementation**:
 ```typescript
+// YouTube Provider
 export class YouTubeProvider {
   async search(query: string, limit = 5): Promise<SearchResult[]>
   async getAudioUrl(videoIdOrUrl: string): Promise<AudioInfo>
 }
 
-export function createYoutubeProvider(): YouTubeProvider
-export function getYoutubeProvider(): YouTubeProvider | null
+// Taste Engine
+export class TasteEngine {
+  processFeedback(track: TrackInfo, playedSec: number, totalSec: number, skipped: boolean): void
+  getState(): TasteState
+  getPersona(): AgentPersona
+  getSessionLane(): SessionLane | null
+  getSummary(): object
+}
 ```
 
 **Data Structures** ✓:
 ```typescript
-export interface SearchResult {
-  id: string;
-  title: string;
-  artist: string;           // from video.author.name
-  duration: string;         // "3:45" formatted
-  durationMs: number;       // milliseconds
-  thumbnail: string;
-  url: string;              // YouTube watch URL
+interface TasteState {
+  obsessions: Record<string, number>;  // "artist:x" or "tag:x" -> 0-1
+  boredom: Record<string, number>;
+  cravings: string[];
+  noveltyAppetite: number;             // 0-1
+  repeatTolerance: number;             // 0-1
+  lastUpdatedAt: number;
 }
 
-export interface AudioInfo {
-  streamUrl: string;        // m4a best available audio
-  title: string;
-  artist: string;           // from uploader or channel
-  duration: number;         // seconds
-  thumbnail: string;
+interface AgentPersona {
+  curiosity: number;           // 0-1
+  dramaticTransition: number;  // 0-1
+  callbackLove: number;        // 0-1
+  antiMonotony: number;        // 0-1
+}
+
+interface SessionLane {
+  description: string;   // e.g. "dark minimal instrumental"
+  tags: string[];
+  songCount: number;
+  startedAt: number;
 }
 ```
 
@@ -367,30 +396,37 @@ export interface AudioInfo {
 - Phase 1 (Setup) — COMPLETE
 - Phase 2 (MCP Server) — COMPLETE
 - Phase 3 (Audio Engine) — COMPLETE
+- Phase 3.5 (Last.fm Provider) — COMPLETE (for tag enrichment)
 - @distube/ytsr v2.0.4
 - youtube-dl-exec v3.1.3
 - System: yt-dlp binary installed
 
 **Acceptance Criteria** ✓ (ALL MET):
-- [x] `search(query)` returns array of SearchResult
-- [x] `search("")` returns empty array
-- [x] `search(query)` filters to video type only
-- [x] `getAudioUrl(videoId)` returns valid stream URL
-- [x] `getAudioUrl("https://...")` accepts full URLs
-- [x] Error thrown on missing stream URL
-- [x] Title, artist, duration extracted correctly
-- [x] Duration parsing handles mm:ss and hh:mm:ss formats
-- [x] No API keys required (ytsr + yt-dlp based)
-- [x] Uses `console.error()` only (stdio-safe)
-- [x] Singleton pattern prevents multiple instances
+- [x] YouTube search and stream extraction work correctly
+- [x] Taste state persists to session_state table
+- [x] Feedback processing updates obsessions/boredom correctly
+- [x] Time decay applies naturally over hours
+- [x] Session lanes form and pivot based on tag overlap
+- [x] Agent persona evolves from play patterns
+- [x] get_session_state MCP tool returns full taste summary
+- [x] Tag-level feedback uses Last.fm enriched data
+- [x] Feedback wired into queue playback controller
+- [x] All 60+ unit tests passing
 - [x] Code compiles (tsc) with strict mode
 
 **Files Created/Modified** ✓:
 - [x] `src/providers/youtube-provider.ts` (95 LOC)
+- [x] `src/taste/taste-engine.ts` (340 LOC, new)
+- [x] `src/taste/taste-engine.test.ts` (new)
+- [x] `src/queue/queue-playback-controller.ts` (feedback wiring)
+- [x] `src/history/history-store.ts` (added getTrackTags method)
+- [x] `src/mcp/mcp-server.ts` (added get_session_state tool)
 
 **Integration Status**:
-- [x] Exported SearchResult and AudioInfo types
-- [x] Ready for tool-handlers.ts integration (Phase 4+ work)
+- [x] YouTube provider integrated into tool handlers
+- [x] Taste engine integrated into playback feedback loop
+- [x] Session state persisted across playback sessions
+- [x] Agent persona ready for future song selection algorithms
 
 ---
 
@@ -717,19 +753,20 @@ export class QueueManager {
 
 ## Progress Tracking
 
-**Last Updated**: Mar 16, 2026 (Phase 3 Last.fm provider + cache; Phase 2 Smart Play expansion; Phase 7 + Phase 1+ completion; publish deferred)
+**Last Updated**: Mar 16, 2026 (Phase 4 Taste Intelligence + Session Lanes; Phase 3.5 Last.fm provider; Phase 2 Smart Play expansion; Phase 7 + Phase 1+ completion; publish deferred)
 
 | Phase | Status | % Complete | Notes |
 |-------|--------|-----------|-------|
 | 1 | ✓ COMPLETE | 100% | Project setup + initial docs |
 | 1+ | ✓ COMPLETE | 100% | SQLite history + history MCP tool |
-| 2 | ✓ COMPLETE | 100% | McpServer + 11 tools; play_song with search-result-scorer |
-| 3 | ✓ COMPLETE | 100% | MpvController + cross-platform IPC; Last.fm provider + cache |
-| 4 | ✓ COMPLETE | 100% | YouTubeProvider search() + getAudioUrl() |
+| 2 | ✓ COMPLETE | 100% | McpServer + 12 tools; play_song with search-result-scorer |
+| 3 | ✓ COMPLETE | 100% | MpvController + cross-platform IPC |
+| 3.5 | ✓ COMPLETE | 100% | Last.fm provider + 7-day SQLite cache |
+| 4 | ✓ COMPLETE | 100% | YouTubeProvider + TasteEngine with implicit feedback + session lanes |
 | 5 | ✓ COMPLETE | 100% | Web server + WebSocket dashboard |
 | 6 | ✓ COMPLETE | 100% | Curated mood pools + dashboard mood state |
 | 7 | ✓ COMPLETE | 100% | Queue manager + auto-advance + release prep |
-| **Overall** | **100%** | | MVP + history persistence + smart play + Last.fm discovery complete; public publish deferred |
+| **Overall** | **100%** | | MVP complete: agent-driven music control + taste intelligence + session lanes + Last.fm discovery; public publish deferred |
 
 ---
 

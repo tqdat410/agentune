@@ -6,6 +6,7 @@ import type { Mood } from '../mood/mood-presets.js';
 import { getRandomMoodQuery, getMoodQueries, MOOD_VALUES, normalizeMood } from '../mood/mood-presets.js';
 import { scoreSearchResults } from '../providers/search-result-scorer.js';
 import { getYoutubeProvider } from '../providers/youtube-provider.js';
+import { getTasteEngine } from '../taste/taste-engine.js';
 import { getQueuePlaybackController } from '../queue/queue-playback-controller.js';
 import { getQueueManager } from '../queue/queue-manager.js';
 
@@ -353,5 +354,15 @@ export async function handleVolume(args: { level?: number }): Promise<ToolResult
     return textResult({ volume: current, message: `Current volume: ${current}%.` });
   } catch (err) {
     return errorResult(`Volume failed: ${(err as Error).message}`);
+  }
+}
+
+export async function handleGetSessionState(): Promise<ToolResult> {
+  try {
+    const taste = getTasteEngine();
+    if (!taste) return errorResult('Taste engine not initialized. History store may be unavailable.');
+    return textResult(taste.getSummary());
+  } catch (err) {
+    return errorResult(`Session state failed: ${(err as Error).message}`);
   }
 }

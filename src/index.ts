@@ -11,6 +11,7 @@ import { createQueueManager } from './queue/queue-manager.js';
 import { createQueuePlaybackController, getQueuePlaybackController } from './queue/queue-playback-controller.js';
 import { createHistoryStore, getHistoryStore } from './history/history-store.js';
 import { createLastFmProvider } from './providers/lastfm-provider.js';
+import { createTasteEngine } from './taste/taste-engine.js';
 
 async function main() {
   console.error('[sbotify] Starting...');
@@ -32,6 +33,13 @@ async function main() {
     }
   } else {
     console.error('[sbotify] No LASTFM_API_KEY — discovery features will be limited.');
+  }
+
+  // Initialize taste engine (depends on history store)
+  const store = getHistoryStore();
+  if (store) {
+    createTasteEngine(store);
+    console.error('[sbotify] Taste engine initialized.');
   }
 
   // Initialize components

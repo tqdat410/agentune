@@ -2,6 +2,20 @@
 
 ## 2026-03-16 (Continued)
 
+### Phase 4: Taste Intelligence + Session Lanes
+- Added `src/taste/taste-engine.ts` — TasteEngine class with taste state, agent persona, and session lanes
+  - Taste state: obsessions (artist/tag affinity 0-1), boredom (fatigue 0-1), cravings (active tag interests), noveltyAppetite, repeatTolerance
+  - Agent persona: curiosity, dramaticTransition, callbackLove, antiMonotony (evolved separately from user prefs)
+  - Session lanes: groups 2-5 songs by tag overlap (30% threshold); pivots on mood shift
+  - Time-based decay: `value * 0.95^hours` for natural preference evolution
+  - Implicit feedback processing: skip ratio + completion rate → obsession/boredom adjustments
+- Added new MCP tool `get_session_state` to `src/mcp/mcp-server.ts` — returns taste profile + persona + current lane + recent plays
+- Integrated feedback wiring into `src/queue/queue-playback-controller.ts` — calls `taste.processFeedback()` on skip and natural finish events
+- Extended `src/history/history-store.ts` with `getTrackTags()` method to support tag-level feedback from Last.fm cache
+- All state persisted to `session_state` table in SQLite (non-blocking)
+- Added `src/taste/taste-engine.test.ts` with unit tests for taste state transitions
+- All 60+ unit tests passing; build clean; zero new external dependencies
+
 ### Phase 3: Last.fm Provider + Cache
 - Added `src/providers/lastfm-provider.ts` — Last.fm API client with 7-day SQLite cache
   - 4 endpoints: `getSimilarArtists(artist, limit?)`, `getSimilarTracks(artist, track, limit?)`, `getTopTags(artist, track?)`, `getTopTracksByTag(tag, limit?)`

@@ -17,6 +17,7 @@ import {
   handleNowPlaying,
   handleVolume,
   handleHistory,
+  handleGetSessionState,
 } from "./tool-handlers.js";
 
 export async function createMcpServer(): Promise<McpServer> {
@@ -129,6 +130,16 @@ export async function createMcpServer(): Promise<McpServer> {
       query: z.string().optional().describe("Filter by track title or artist name"),
     },
     async (args) => handleHistory(args),
+  );
+
+  server.tool(
+    "get_session_state",
+    "Read your current taste profile, persona, and session state. " +
+    "Call this before deciding what to play next — it tells you what you're into, " +
+    "what you're bored of, and what vibe the current session is in. " +
+    "Use this context to inform your music intent when calling discover().",
+    {},
+    async () => handleGetSessionState(),
   );
 
   // --- Connect stdio transport ---

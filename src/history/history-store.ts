@@ -225,12 +225,17 @@ export class HistoryStore {
       agent_persona_json: string; current_intent_json: string;
     } | undefined;
     if (!row) return {};
-    return {
-      lane: JSON.parse(row.lane_json),
-      tasteState: JSON.parse(row.taste_state_json),
-      agentPersona: JSON.parse(row.agent_persona_json),
-      currentIntent: JSON.parse(row.current_intent_json),
-    };
+    try {
+      return {
+        lane: JSON.parse(row.lane_json),
+        tasteState: JSON.parse(row.taste_state_json),
+        agentPersona: JSON.parse(row.agent_persona_json),
+        currentIntent: JSON.parse(row.current_intent_json),
+      };
+    } catch {
+      console.error('[sbotify] Corrupted session_state JSON — resetting to defaults.');
+      return {};
+    }
   }
 
   /** Upsert singleton session_state row. */

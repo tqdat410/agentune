@@ -23,8 +23,14 @@ sbotify/
 │   ├── queue/
 │   │   ├── queue-manager.ts          # Queue state management (Phase 7)
 │   │   └── queue-playback-controller.ts # Queue/mpv orchestration (Phase 7)
-│   └── mood/
-│       └── mood-presets.ts           # Mood → search query mapping (Phase 6)
+│   ├── mood/
+│   │   └── mood-presets.ts           # Mood → search query mapping (Phase 6)
+│   ├── taste/
+│   │   ├── taste-engine.ts           # Taste intelligence + implicit feedback (Phase 4)
+│   │   └── taste-engine.test.ts      # Taste engine unit tests
+│   └── history/
+│       ├── history-store.ts          # SQLite play history + session state persistence (Phase 1+)
+│       └── history-schema.ts         # Database schema + track normalization
 ├── public/
 │   ├── index.html                    # Dashboard template (Phase 5)
 │   ├── style.css                     # Dashboard styles (Phase 5)
@@ -407,6 +413,40 @@ normalizeMood(input: string): Mood | null
 getMoodQueries(mood: Mood): string[]
 getRandomMoodQuery(mood: Mood): string
 ```
+
+### `src/taste/taste-engine.ts` — Taste Intelligence
+**Status**: Phase 4 COMPLETE
+
+**Responsibility**: Track user taste preferences through implicit feedback signals (skip/completion rates), maintain agent persona, and manage session lanes for mood continuity.
+
+**Key Concepts**:
+- **Taste State**: Records obsessions (artist/tag affinity 0-1), boredom (fatigue 0-1), cravings (active tag interests), novelty appetite, repeat tolerance
+- **Agent Persona**: Controls playback style (curiosity, dramatic transition, callback love, anti-monotony) — separate from user preferences
+- **Session Lanes**: Groups 2-5 consecutive songs by tag overlap; pivots to new lane when mood shifts
+- **Time-based Decay**: Values decay via formula `value * 0.95^hours` for natural preference evolution
+
+**Implementation**:
+- `TasteEngine` class wraps history store; loads persisted state from `session_state` table
+- `processFeedback(track, playedSec, totalSec, skipped)` processes play/skip events
+  - Adjusts obsession/boredom based on completion ratio
+  - Tag-level feedback from Last.fm enriched tracks
+  - Cravings updated from top 3 tags in recent plays
+  - Session lane updated based on tag overlap (30% threshold)
+  - Persona evolves slowly (1% per play) based on listening patterns
+- Singleton pattern: `createTasteEngine(store)` + `getTasteEngine()`
+
+**Key Methods**:
+```typescript
+processFeedback(track: TrackInfo, playedSec: number, totalSec: number, skipped: boolean): void
+getState(): TasteState                    // Obsessions, boredom, appetites
+getPersona(): AgentPersona                // Curiosity, drama, callback, antiMonotony
+getSessionLane(): SessionLane | null      // Current mood lane (2-5 songs)
+getSummary(): object                      // Human-readable summary for MCP tool
+```
+
+**Data Persistence**: All state persisted to `session_state` table on every feedback event (non-blocking)
+
+**MCP Integration**: `get_session_state` tool returns full taste summary + recent plays with completion metrics
 
 ## Data Flow
 
