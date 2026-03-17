@@ -1,7 +1,10 @@
-// MCP server setup — registers tools and handles agent communication via stdio
+// MCP server setup — registers tools and handles agent communication via stdio or HTTP
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { randomUUID } from "crypto";
+import { type IncomingMessage, type ServerResponse } from "http";
 import { z } from "zod";
 import {
   handleAddSong,
@@ -17,14 +20,8 @@ import {
   handleGetSessionState,
 } from "./tool-handlers.js";
 
-export async function createMcpServer(): Promise<McpServer> {
-  const server = new McpServer({
-    name: "sbotify",
-    version: "0.1.0",
-  });
-
-  // --- Tool Registrations ---
-
+/** Register all MCP tools onto a server instance */
+export function registerMcpTools(server: McpServer): void {
   server.tool(
     "play_song",
     "Play a specific song immediately using title and artist. " +
@@ -69,26 +66,9 @@ export async function createMcpServer(): Promise<McpServer> {
     async (args) => handleDiscover(args),
   );
 
-  server.tool(
-    "pause",
-    "Pause the currently playing track",
-    {},
-    async () => handlePause(),
-  );
-
-  server.tool(
-    "resume",
-    "Resume playback of a paused track",
-    {},
-    async () => handleResume(),
-  );
-
-  server.tool(
-    "skip",
-    "Skip to the next track in the queue",
-    {},
-    async () => handleSkip(),
-  );
+  server.tool("pause", "Pause the currently playing track", {}, async () => handlePause());
+  server.tool("resume", "Resume playback of a paused track", {}, async () => handleResume());
+  server.tool("skip", "Skip to the next track in the queue", {}, async () => handleSkip());
 
   server.tool(
     "queue_list",
@@ -132,11 +112,78 @@ export async function createMcpServer(): Promise<McpServer> {
     {},
     async () => handleGetSessionState(),
   );
+}
 
-  // --- Connect stdio transport ---
+/** Create MCP server with stdio transport (legacy/direct mode) */
+export async function createStdioMcpServer(): Promise<McpServer> {
+  const server = new McpServer({ name: "sbotify", version: "0.1.0" });
+  registerMcpTools(server);
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("[sbotify] MCP server started on stdio");
-
   return server;
+}
+
+// --- HTTP MCP handler ---
+
+function isInitializeRequest(body: unknown): boolean {
+  if (Array.isArray(body)) {
+    return body.some((msg) => (msg as Record<string, unknown>)?.method === 'initialize');
+  }
+  return (body as Record<string, unknown>)?.method === 'initialize';
+}
+
+/** Create an HTTP MCP handler for daemon mode — manages per-session transports */
+export function createHttpMcpHandler(): {
+  handleRequest: (req: IncomingMessage, res: ServerResponse, body?: unknown) => Promise<void>;
+  close: () => Promise<void>;
+} {
+  const sessions = new Map<string, StreamableHTTPServerTransport>();
+
+  return {
+    async handleRequest(req, res, body) {
+      const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+      if (req.method === 'POST' && !sessionId && isInitializeRequest(body)) {
+        // New session — create transport + server
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => randomUUID(),
+          onsessioninitialized: (sid) => { sessions.set(sid, transport); },
+        });
+        transport.onclose = () => {
+          const sid = transport.sessionId;
+          if (sid) sessions.delete(sid);
+        };
+        try {
+          const server = new McpServer({ name: 'sbotify', version: '0.1.0' });
+          registerMcpTools(server);
+          await server.connect(transport);
+          await transport.handleRequest(req, res, body);
+        } catch (err) {
+          await transport.close().catch(() => {});
+          if (!res.headersSent) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Failed to create session' }));
+          }
+        }
+      } else if (sessionId && sessions.has(sessionId)) {
+        await sessions.get(sessionId)!.handleRequest(req, res, body);
+      } else if (req.method === 'POST' && sessionId && !sessions.has(sessionId)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid or expired session' }));
+      } else if (req.method === 'POST') {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing session ID or initialize request' }));
+      } else {
+        res.writeHead(405);
+        res.end('Method Not Allowed');
+      }
+    },
+    async close() {
+      for (const [sid, transport] of sessions) {
+        await transport.close();
+        sessions.delete(sid);
+      }
+    },
+  };
 }
