@@ -3,13 +3,20 @@ const elements = {
   art: document.querySelector('[data-art]'),
   currentTime: document.querySelector('[data-current-time]'),
   duration: document.querySelector('[data-duration]'),
-  lane: document.querySelector('[data-lane]'),
   mute: document.querySelector('[data-mute]'),
   progress: document.querySelector('[data-progress]'),
   queue: document.querySelector('[data-queue]'),
   state: document.querySelector('[data-state]'),
   title: document.querySelector('[data-title]'),
   volume: document.querySelector('[data-volume]'),
+  taste: document.querySelector('[data-taste]'),
+  saveTaste: document.querySelector('[data-save-taste]'),
+  traitExploration: document.querySelector('[data-trait-exploration]'),
+  traitExplorationVal: document.querySelector('[data-trait-exploration-val]'),
+  traitVariety: document.querySelector('[data-trait-variety]'),
+  traitVarietyVal: document.querySelector('[data-trait-variety-val]'),
+  traitLoyalty: document.querySelector('[data-trait-loyalty]'),
+  traitLoyaltyVal: document.querySelector('[data-trait-loyalty-val]'),
 };
 
 let socket;
@@ -40,7 +47,6 @@ function renderState(state) {
   elements.progress.style.width = `${state.duration > 0 ? (state.position / state.duration) * 100 : 0}%`;
   elements.volume.value = String(state.volume);
   elements.mute.textContent = state.muted ? 'Unmute' : 'Mute';
-  elements.lane.textContent = state.lane ? `${state.lane.description} (${state.lane.songCount} tracks)` : 'No lane';
   elements.art.src = state.thumbnail || 'https://placehold.co/640x640/10131a/e6ecff?text=Sbotify';
   renderQueue(state.queue);
 }
@@ -52,6 +58,9 @@ function connect() {
     const payload = JSON.parse(event.data);
     if (payload.type === 'state') {
       renderState(payload.data);
+    }
+    if (payload.type === 'persona') {
+      renderPersona(payload.data);
     }
   });
 
@@ -76,11 +85,50 @@ elements.mute.addEventListener('click', () => {
   sendSocketMessage({ type: 'mute' });
 });
 
+function renderPersona(data) {
+  if (data.traits) {
+    renderTrait('exploration', data.traits.exploration);
+    renderTrait('variety', data.traits.variety);
+    renderTrait('loyalty', data.traits.loyalty);
+  }
+  // Don't overwrite textarea if user is editing
+  if (data.taste !== undefined && document.activeElement !== elements.taste) {
+    elements.taste.value = data.taste;
+  }
+}
+
+function renderTrait(name, value) {
+  const val = Math.round((value ?? 0.5) * 100) / 100;
+  const fill = elements[`trait${name.charAt(0).toUpperCase() + name.slice(1)}`];
+  const label = elements[`trait${name.charAt(0).toUpperCase() + name.slice(1)}Val`];
+  if (fill) fill.style.width = `${val * 100}%`;
+  if (label) label.textContent = val.toFixed(2);
+}
+
+elements.saveTaste.addEventListener('click', () => {
+  const text = elements.taste.value.trim();
+  fetch('/api/persona', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ taste: text }),
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      if (data.traits) renderPersona(data);
+    })
+    .catch((err) => console.error('Save taste failed:', err));
+});
+
 fetch('/api/status')
   .then((response) => response.json())
   .then((state) => renderState(state))
   .catch(() => {
     elements.state.textContent = 'Waiting for server';
   });
+
+fetch('/api/persona')
+  .then((response) => response.json())
+  .then((data) => renderPersona(data))
+  .catch(() => {});
 
 connect();

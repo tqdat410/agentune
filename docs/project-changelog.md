@@ -1,5 +1,45 @@
 # Project Changelog
 
+## 2026-03-18 (Agent-First State Redesign Sync)
+
+### Verified Current State Contract
+- Re-verified the active state redesign against current source:
+  - `src/history/history-schema.ts`
+  - `src/history/history-store.ts`
+  - `src/mcp/mcp-server.ts`
+  - `src/mcp/tool-handlers.ts`
+  - `src/queue/queue-playback-controller.ts`
+  - `src/taste/candidate-generator.ts`
+  - `src/taste/taste-engine.ts`
+  - `src/web/state-broadcaster.ts`
+  - `src/web/web-server-helpers.ts`
+  - `src/web/web-server.ts`
+  - `public/app.js`
+  - `public/index.html`
+  - `public/style.css`
+  - `package.json`
+- Confirmed `get_session_state()` now returns the agent-facing summary:
+  - `context` with hour, period, and day of week
+  - `persona` with computed `traits` plus persisted free-text `taste`
+  - `history` with recent plays and top artists/tags
+- Confirmed `update_persona({ taste })` is part of the MCP surface and persists `session_state.persona_taste_text`
+- Confirmed `discover()` now returns grouped raw candidates from `continuation`, `comfort`, `contextFit`, and `wildcard`
+- Confirmed the dashboard now exposes a persona editor through `GET /api/persona`, `POST /api/persona`, and `persona` WebSocket broadcasts
+
+### Documentation Sync
+- Updated `docs/system-architecture.md` to describe the current agent-first contract, grouped discover lanes, and dashboard persona editor
+- Rewrote `docs/codebase-summary.md` from current source and refreshed repo context with `repomix-output.xml`
+- Updated `README.md` wording where it still implied continuous session-lane state or server-side reranking
+- Left older historical changelog entries intact as historical record; they no longer describe the current runtime
+
+### Validation
+- `npm test`
+- Current local result: 77 passed, 0 failed
+- State redesign coverage includes:
+  - `src/history/history-store-state-redesign.test.ts`
+  - `src/taste/taste-engine.test.ts`
+  - `src/taste/candidate-generator.test.ts`
+
 ## 2026-03-17 (Daemon UX — Terminal Hide + Auto-Shutdown)
 
 ### Auto-Shutdown on Idle + Transparent Windows Daemon

@@ -2,12 +2,12 @@
 
 **MCP music server — let your coding agent be your DJ.**
 
-sbotify is a Model Context Protocol (MCP) server that enables coding agents (Claude Code, Cursor, Codex) to control music playback like a professional DJ. Discover tracks from your current taste state, play songs immediately, add songs to the queue, and keep a continuous session lane — all through natural language while your agent writes code.
+sbotify is a Model Context Protocol (MCP) server that enables coding agents (Claude Code, Cursor, Codex) to control music playback like a professional DJ. Discover tracks from your current taste state, play songs immediately, add songs to the queue, and keep a shared listening session moving — all through natural language while your agent writes code.
 
 ## Features
 
 - **Agent-driven music control**: Taste-aware `discover -> play_song/add_song -> feedback` flow via MCP
-- **Apple-first discovery pipeline**: 4-lane suggestions (continuation, comfort, context-fit, wildcard) with local reranking
+- **Apple-first discovery pipeline**: grouped 4-lane suggestions (continuation, comfort, context-fit, wildcard) for agent selection
 - **Browser dashboard**: Real-time now-playing info + volume slider on localhost:3737
 - **Headless playback**: Audio plays independently via mpv (no browser needed)
 - **Cross-platform**: Works on Windows, macOS, Linux
@@ -76,7 +76,7 @@ Open http://localhost:3737 in your browser to see:
 - Now-playing track (title, artist, progress)
 - Volume slider
 - Live queue preview
-- Session lane info (current tag context)
+- Persona editor + auto-computed listening traits
 
 ## Architecture Overview
 

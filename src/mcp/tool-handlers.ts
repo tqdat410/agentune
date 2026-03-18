@@ -7,10 +7,10 @@ import { getAppleSearchProvider } from '../providers/apple-search-provider.js';
 import { getYoutubeProvider } from '../providers/youtube-provider.js';
 import { resolveSong } from './song-resolver.js';
 import { CandidateGenerator, type MusicIntent } from '../taste/candidate-generator.js';
-import { CandidateScorer, TEMPERATURE } from '../taste/candidate-scorer.js';
 import { getTasteEngine } from '../taste/taste-engine.js';
 import { getQueuePlaybackController } from '../queue/queue-playback-controller.js';
 import { getQueueManager } from '../queue/queue-manager.js';
+import { getWebServer } from '../web/web-server.js';
 
 export type ToolContent = { type: "text"; text: string };
 export type ToolResult = { content: ToolContent[]; isError?: boolean };
@@ -126,8 +126,6 @@ export async function handleAddSong(args: { title: string; artist?: string }): P
 
 export async function handleDiscover(args: { mode?: string; intent?: MusicIntent }): Promise<ToolResult> {
   try {
-    const taste = getTasteEngine();
-    if (!taste) return errorResult('Taste engine not initialized.');
     const store = getHistoryStore();
     if (!store) return errorResult('History store not initialized.');
 
@@ -135,44 +133,42 @@ export async function handleDiscover(args: { mode?: string; intent?: MusicIntent
 
     const smartSearch = getSmartSearchProvider();
     const apple = getAppleSearchProvider();
-    const generator = new CandidateGenerator(smartSearch, apple, store, taste);
-    const scorer = new CandidateScorer(taste, store);
+    const generator = new CandidateGenerator(smartSearch, apple, store);
 
-    // Get current track for continuation lane
     const queueManager = getQueueManager();
     const nowPlaying = queueManager?.getNowPlaying() ?? null;
     const currentTrack = nowPlaying
       ? { artist: nowPlaying.artist, title: nowPlaying.title, duration: nowPlaying.duration }
       : null;
 
-    const candidates = await generator.generate(currentTrack, args.intent, mode);
-    if (candidates.length === 0) {
+    const grouped = await generator.generate(currentTrack, args.intent, mode);
+    const isEmpty = Object.values(grouped).every(arr => arr.length === 0);
+
+    if (isEmpty) {
       return textResult({
-        suggestions: [],
-        message: 'No candidates found. Try adding a track first so discover has context to work with.',
+        candidates: grouped,
+        message: 'No candidates found. Try adding a track first so discover has context.',
       });
     }
 
-    const scored = scorer.score(candidates, currentTrack, args.intent);
-    const temperature = TEMPERATURE[mode];
-    const suggestions = scorer.topKSample(scored, 5, temperature);
-
-    const lane = taste.getSessionLane();
+    const mapCandidate = (c: { title: string; artist: string; tags?: string[]; provider: string }) => ({
+      title: c.title,
+      artist: c.artist,
+      tags: c.tags ?? [],
+      source: c.provider,
+    });
 
     return textResult({
       basedOn: currentTrack ? { title: currentTrack.title, artist: currentTrack.artist } : null,
       mode,
-      suggestions: suggestions.map(s => ({
-        title: s.title,
-        artist: s.artist,
-        score: s.score,
-        source: s.source,
-        reasons: s.reasons,
-        hint: `add_song({ title: '${s.title.replace(/'/g, "\\'")}', artist: '${s.artist.replace(/'/g, "\\'")}' })`,
-        replace_hint: `play_song({ title: '${s.title.replace(/'/g, "\\'")}', artist: '${s.artist.replace(/'/g, "\\'")}' })`,
-      })),
-      lane: lane ? { description: lane.description, songCount: lane.songCount } : null,
-      tip: 'Use add_song() to queue a suggestion, or play_song() to replace the current track immediately.',
+      candidates: {
+        continuation: grouped.continuation.map(mapCandidate),
+        comfort: grouped.comfort.map(mapCandidate),
+        contextFit: grouped.contextFit.map(mapCandidate),
+        wildcard: grouped.wildcard.map(mapCandidate),
+      },
+      more_available: true,
+      tip: 'Call discover() again for different suggestions. Use add_song() or play_song() to pick.',
     });
   } catch (err) {
     return errorResult(`Discover failed: ${(err as Error).message}`);
@@ -324,5 +320,27 @@ export async function handleGetSessionState(): Promise<ToolResult> {
     return textResult(taste.getSummary());
   } catch (err) {
     return errorResult(`Session state failed: ${(err as Error).message}`);
+  }
+}
+
+export async function handleUpdatePersona(args: { taste: string }): Promise<ToolResult> {
+  try {
+    const taste = getTasteEngine();
+    if (!taste) return errorResult('Taste engine not initialized.');
+
+    const text = args.taste.slice(0, 1000);
+    taste.saveTasteText(text);
+    getWebServer()?.broadcastPersona();
+
+    return textResult({
+      updated: true,
+      persona: {
+        traits: taste.computeTraits(),
+        taste: text,
+      },
+      message: 'Persona taste updated.',
+    });
+  } catch (err) {
+    return errorResult(`Update persona failed: ${(err as Error).message}`);
   }
 }

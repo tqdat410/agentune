@@ -1,16 +1,11 @@
 import { EventEmitter } from 'events';
 import type { TrackMeta, MpvController } from '../audio/mpv-controller.js';
 import type { QueueManager } from '../queue/queue-manager.js';
-import { getTasteEngine } from '../taste/taste-engine.js';
+
 
 export interface DashboardQueueItem {
   title: string;
   artist: string;
-}
-
-export interface DashboardLane {
-  description: string;
-  songCount: number;
 }
 
 export interface DashboardState {
@@ -23,7 +18,6 @@ export interface DashboardState {
   volume: number;
   muted: boolean;
   queue: DashboardQueueItem[];
-  lane: DashboardLane | null;
 }
 
 function mapTrack(track: TrackMeta | null) {
@@ -93,7 +87,6 @@ export class StateBroadcaster extends EventEmitter {
       volume: this.mpv.getVolume(),
       muted: this.mpv.getIsMuted(),
       queue: this.queueManager.list().map((item) => ({ title: item.title, artist: item.artist })),
-      lane: null,
     };
   }
 
@@ -103,9 +96,6 @@ export class StateBroadcaster extends EventEmitter {
     const position = snapshot.currentTrack && this.mpv.isReady()
       ? Math.max(0, Math.round(await this.mpv.getPosition()))
       : 0;
-
-    const taste = getTasteEngine();
-    const sessionLane = taste?.getSessionLane() ?? null;
 
     return {
       playing: snapshot.isPlaying,
@@ -117,7 +107,6 @@ export class StateBroadcaster extends EventEmitter {
       volume: snapshot.volume,
       muted: snapshot.isMuted,
       queue: this.queueManager.list().map((item) => ({ title: item.title, artist: item.artist })),
-      lane: sessionLane ? { description: sessionLane.description, songCount: sessionLane.songCount } : null,
     };
   }
 }

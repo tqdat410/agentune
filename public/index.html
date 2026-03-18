@@ -18,7 +18,6 @@
           <p data-artist>Ask your agent to start a track</p>
           <div class="status-row">
             <span class="pill" data-state>Idle</span>
-            <span class="pill subtle" data-lane>No lane</span>
           </div>
           <div class="progress-card">
             <div class="progress-track">
@@ -47,6 +46,34 @@
         <ul data-queue class="queue-list">
           <li class="queue-empty">Queue not wired yet</li>
         </ul>
+      </section>
+
+      <section class="config-card">
+        <div class="card-head">
+          <h2>Music Preferences</h2>
+        </div>
+        <div class="config-body">
+          <label>Your Taste</label>
+          <textarea data-taste rows="3" maxlength="1000" placeholder="Describe your music taste..."></textarea>
+          <button data-save-taste type="button">Save</button>
+
+          <label>Listening Traits <span class="subtle">auto-computed</span></label>
+          <div class="trait-row">
+            <span class="trait-label">exploration</span>
+            <div class="trait-bar"><div class="trait-fill" data-trait-exploration></div></div>
+            <span class="trait-val" data-trait-exploration-val>0.50</span>
+          </div>
+          <div class="trait-row">
+            <span class="trait-label">variety</span>
+            <div class="trait-bar"><div class="trait-fill" data-trait-variety></div></div>
+            <span class="trait-val" data-trait-variety-val>0.50</span>
+          </div>
+          <div class="trait-row">
+            <span class="trait-label">loyalty</span>
+            <div class="trait-bar"><div class="trait-fill" data-trait-loyalty></div></div>
+            <span class="trait-val" data-trait-loyalty-val>0.50</span>
+          </div>
+        </div>
       </section>
     </main>
 

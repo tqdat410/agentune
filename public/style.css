@@ -176,6 +176,96 @@ button {
   background: rgba(255, 255, 255, 0.04);
 }
 
+/* Config card — persona editor + traits */
+.config-card {
+  margin-top: 28px;
+  padding: 22px;
+  background: rgba(14, 18, 26, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 28px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+}
+
+.config-body {
+  margin-top: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.config-body label {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.config-body label .subtle {
+  font-weight: 400;
+  color: #9ca9c8;
+  font-size: 0.82rem;
+}
+
+.config-body textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #f5f7ff;
+  font: inherit;
+  font-size: 0.95rem;
+  resize: vertical;
+}
+
+.config-body textarea:focus {
+  outline: none;
+  border-color: #1db954;
+}
+
+.config-body button[data-save-taste] {
+  justify-self: start;
+  padding: 10px 22px;
+  border: 0;
+  border-radius: 999px;
+  background: #1db954;
+  color: #08110d;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.trait-row {
+  display: grid;
+  grid-template-columns: 100px 1fr 48px;
+  align-items: center;
+  gap: 12px;
+}
+
+.trait-label {
+  font-size: 0.88rem;
+  color: #aab6d5;
+}
+
+.trait-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.trait-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1db954, #74f4a8);
+  transition: width 300ms ease;
+  width: 50%;
+}
+
+.trait-val {
+  font-size: 0.85rem;
+  color: #aab6d5;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 820px) {
   .hero-card {
     grid-template-columns: 1fr;

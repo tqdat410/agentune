@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS session_state (
   lane_json TEXT DEFAULT '{}',
   taste_state_json TEXT DEFAULT '{}',
   agent_persona_json TEXT DEFAULT '{}',
-  current_intent_json TEXT DEFAULT '{}'
+  current_intent_json TEXT DEFAULT '{}',
+  persona_taste_text TEXT DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS provider_cache (

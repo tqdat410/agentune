@@ -6,12 +6,14 @@ import { WebSocket, WebSocketServer } from 'ws';
 import type { MpvController } from '../audio/mpv-controller.js';
 import type { QueueManager } from '../queue/queue-manager.js';
 import { StateBroadcaster } from './state-broadcaster.js';
+import { getTasteEngine } from '../taste/taste-engine.js';
 import {
   DEFAULT_PORT,
   MAX_PORT_ATTEMPTS,
   getMimeType,
   getStaticFilePath,
   openUrl,
+  readJsonBody,
   readVolumeRequest,
   sendJson,
 } from './web-server-helpers.js';
@@ -45,6 +47,7 @@ export class WebServer {
 
     this.wsServer.on('connection', (socket) => {
       this.sendState(socket);
+      this.sendPersona(socket);
       socket.on('message', (message) => {
         this.handleSocketMessage(message.toString());
       });
@@ -91,6 +94,9 @@ export class WebServer {
         resolve();
       });
     });
+    if (webServer === this) {
+      webServer = null;
+    }
   }
 
   getDashboardUrl(): string {
@@ -139,6 +145,29 @@ export class WebServer {
       return;
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/persona') {
+      const taste = getTasteEngine();
+      if (!taste) { sendJson(response, { message: 'Unavailable' }, 503); return; }
+      sendJson(response, { traits: taste.computeTraits(), taste: taste.getTasteText() });
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/persona') {
+      const body = await readJsonBody(request);
+      if (typeof body?.taste !== 'string') {
+        sendJson(response, { message: 'taste field required' }, 400);
+        return;
+      }
+      const taste = getTasteEngine();
+      if (!taste) { sendJson(response, { message: 'Unavailable' }, 503); return; }
+      const nextTaste = (body.taste as string).slice(0, 1000);
+      taste.saveTasteText(nextTaste);
+      const traits = taste.computeTraits();
+      sendJson(response, { updated: true, traits, taste: nextTaste });
+      this.broadcastPersona();
+      return;
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/volume') {
       const parsed = await readVolumeRequest(request);
       if (parsed === null) {
@@ -180,7 +209,15 @@ export class WebServer {
 
   private handleSocketMessage(rawMessage: string): void {
     try {
-      const message = JSON.parse(rawMessage) as { type?: string; level?: number };
+      const message = JSON.parse(rawMessage) as { type?: string; level?: number; taste?: string };
+      if (message.type === 'update_persona' && typeof message.taste === 'string') {
+        const tasteEngine = getTasteEngine();
+        if (tasteEngine) {
+          tasteEngine.saveTasteText(message.taste.slice(0, 1000));
+          this.broadcastPersona();
+        }
+        return;
+      }
       if (!this.mpv.isReady()) {
         return;
       }
@@ -195,6 +232,20 @@ export class WebServer {
     }
   }
 
+  broadcastPersona(): void {
+    const taste = getTasteEngine();
+    if (!taste) return;
+    const payload = JSON.stringify({
+      type: 'persona',
+      data: { traits: taste.computeTraits(), taste: taste.getTasteText() },
+    });
+    for (const client of this.wsServer.clients) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(payload);
+      }
+    }
+  }
+
   private broadcastState(): void {
     const payload = JSON.stringify({ type: 'state', data: this.broadcaster.getState() });
     for (const client of this.wsServer.clients) {
@@ -206,6 +257,15 @@ export class WebServer {
 
   private sendState(socket: WebSocket): void {
     socket.send(JSON.stringify({ type: 'state', data: this.broadcaster.getState() }));
+  }
+
+  private sendPersona(socket: WebSocket): void {
+    const taste = getTasteEngine();
+    if (!taste) return;
+    socket.send(JSON.stringify({
+      type: 'persona',
+      data: { traits: taste.computeTraits(), taste: taste.getTasteText() },
+    }));
   }
 }
 

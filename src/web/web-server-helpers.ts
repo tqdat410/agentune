@@ -42,6 +42,20 @@ export function openUrl(url: string): void {
   exec(`xdg-open "${url}"`);
 }
 
+export async function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown> | null> {
+  try {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 export async function readVolumeRequest(request: IncomingMessage): Promise<{ volume: number } | null> {
   try {
     const chunks: Buffer[] = [];

@@ -1,10 +1,11 @@
 // 4-lane candidate generation for discover pipeline
 // Apple Search API is the primary catalog backbone; Smart Search is query-expansion fallback only.
+// Returns grouped candidates — agent ranks them using persona + history context.
 
 import type { SmartSearchProvider } from '../providers/smart-search-provider.js';
 import type { AppleSearchProvider } from '../providers/apple-search-provider.js';
 import type { HistoryStore } from '../history/history-store.js';
-import type { TasteEngine, TrackInfo } from './taste-engine.js';
+import type { TrackInfo } from './taste-engine.js';
 
 export interface MusicIntent {
   energy?: number;       // 0=calm, 1=energetic
@@ -18,8 +19,16 @@ export interface Candidate {
   title: string;
   artist: string;
   source: 'continuation' | 'comfort' | 'context_fit' | 'wildcard';
+  provider: 'apple' | 'history' | 'smart-search';
   sourceDetail: string;
   tags?: string[];
+}
+
+export interface GroupedCandidates {
+  continuation: Candidate[];
+  comfort: Candidate[];
+  contextFit: Candidate[];
+  wildcard: Candidate[];
 }
 
 const LANE_RATIOS = {
@@ -35,17 +44,15 @@ export class CandidateGenerator {
     private readonly smartSearch: SmartSearchProvider | null,
     private readonly apple: AppleSearchProvider | null,
     private readonly historyStore: HistoryStore,
-    private readonly tasteEngine: TasteEngine,
   ) {}
 
   async generate(
     currentTrack: TrackInfo | null,
     intent?: MusicIntent,
     mode: DiscoverMode = 'balanced',
-  ): Promise<Candidate[]> {
+  ): Promise<GroupedCandidates> {
     const candidates: Candidate[] = [];
     const topPlayed = this.historyStore.getTopTracks(6);
-    const sessionLane = this.tasteEngine.getSessionLane();
 
     // Lane A: Continuation — Apple artist catalog first, Smart Search as fallback
     if (currentTrack && this.apple) {
@@ -61,6 +68,7 @@ export class CandidateGenerator {
           candidates.push({
             title: track.title, artist: track.artist,
             source: 'continuation',
+            provider: 'apple',
             sourceDetail: `same artist as ${currentTrack.artist}`,
           });
         }
@@ -77,6 +85,7 @@ export class CandidateGenerator {
             title: track.title,
             artist: track.artist,
             source: 'continuation',
+            provider: 'smart-search',
             sourceDetail: `expanded from ${currentTrack.artist}`,
           });
         }
@@ -91,12 +100,13 @@ export class CandidateGenerator {
         title: track.title,
         artist: track.artist,
         source: 'comfort',
+        provider: 'history',
         sourceDetail: `played ${track.play_count} times`,
       });
     }
 
-    // Lane C: Context Fit — Apple genre/catalog search first, Smart Search only if Apple is too thin
-    const contextTags = intent?.allowed_tags ?? sessionLane?.tags ?? [];
+    // Lane C: Context Fit — use intent tags or fall back to recent history tags
+    const contextTags = intent?.allowed_tags ?? this.getRecentTags();
     if (contextTags.length > 0 && (this.apple || this.smartSearch)) {
       const selectedTags = contextTags.slice(0, 2);
       for (const tag of selectedTags) {
@@ -109,6 +119,7 @@ export class CandidateGenerator {
                 title: track.title,
                 artist: track.artist,
                 source: 'context_fit',
+                provider: 'apple',
                 sourceDetail: `matches genre: ${tag}`,
                 tags: [tag],
               });
@@ -122,6 +133,7 @@ export class CandidateGenerator {
                   title: track.title,
                   artist: track.artist,
                   source: 'context_fit',
+                  provider: 'apple',
                   sourceDetail: `matches lane query: ${tag}`,
                   tags: [tag],
                 });
@@ -137,6 +149,7 @@ export class CandidateGenerator {
                 title: track.title,
                 artist: track.artist,
                 source: 'context_fit',
+                provider: 'smart-search',
                 sourceDetail: `expanded from tag: ${tag}`,
                 tags: [tag],
               });
@@ -161,6 +174,7 @@ export class CandidateGenerator {
                 title: track.title,
                 artist: track.artist,
                 source: 'wildcard',
+                provider: 'apple',
                 sourceDetail: `exploring via ${pick}`,
               });
             }
@@ -171,6 +185,7 @@ export class CandidateGenerator {
                 title: track.title,
                 artist: track.artist,
                 source: 'wildcard',
+                provider: 'smart-search',
                 sourceDetail: `expanded via ${pick}`,
               });
             }
@@ -187,29 +202,50 @@ export class CandidateGenerator {
       ? candidates.filter(c => !c.tags?.some(t => avoidSet.has(t.toLowerCase())))
       : candidates;
 
-    // Apply lane ratios — trim each lane proportionally to mode
+    // Dedup then group by lane with ratios applied
     const deduped = this.dedup(filtered);
-    return this.applyLaneRatios(deduped, mode);
+    return this.groupByLane(deduped, mode);
   }
 
-  /** Trim candidates per lane according to mode ratios. */
-  private applyLaneRatios(candidates: Candidate[], mode: DiscoverMode): Candidate[] {
+  /** Extract tags from recent play history as fallback for Lane C. */
+  private getRecentTags(): string[] {
+    const recent = this.historyStore.getRecent(5);
+    const tags: string[] = [];
+    for (const play of recent) {
+      try { tags.push(...JSON.parse(play.tags_json)); } catch { /* skip corrupt */ }
+    }
+    return [...new Set(tags)].slice(0, 4);
+  }
+
+  /** Group candidates by lane and apply per-lane limits based on mode ratios. */
+  private groupByLane(candidates: Candidate[], mode: DiscoverMode): GroupedCandidates {
     const ratios = LANE_RATIOS[mode];
     const total = candidates.length;
-    if (total === 0) return candidates;
 
-    const grouped: Record<string, Candidate[]> = {};
+    const grouped: GroupedCandidates = { continuation: [], comfort: [], contextFit: [], wildcard: [] };
+    const laneMap: Record<string, keyof GroupedCandidates> = {
+      continuation: 'continuation',
+      comfort: 'comfort',
+      context_fit: 'contextFit',
+      wildcard: 'wildcard',
+    };
+
+    // Collect all candidates per lane
     for (const c of candidates) {
-      (grouped[c.source] ??= []).push(c);
+      const key = laneMap[c.source];
+      if (key) grouped[key].push(c);
     }
 
-    const result: Candidate[] = [];
-    for (const [source, items] of Object.entries(grouped)) {
-      const ratio = ratios[source as keyof typeof ratios] ?? 0.1;
-      const maxForLane = Math.max(1, Math.round(total * ratio));
-      result.push(...items.slice(0, maxForLane));
+    // Trim each lane by ratio
+    if (total > 0) {
+      for (const [source, laneKey] of Object.entries(laneMap)) {
+        const ratio = ratios[source as keyof typeof ratios] ?? 0.1;
+        const maxForLane = Math.max(1, Math.round(total * ratio));
+        grouped[laneKey] = grouped[laneKey].slice(0, maxForLane);
+      }
     }
-    return result;
+
+    return grouped;
   }
 
   private dedup(candidates: Candidate[]): Candidate[] {

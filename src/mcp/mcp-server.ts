@@ -18,6 +18,7 @@ import {
   handleVolume,
   handleHistory,
   handleGetSessionState,
+  handleUpdatePersona,
 } from "./tool-handlers.js";
 
 /** Register all MCP tools onto a server instance */
@@ -48,10 +49,11 @@ export function registerMcpTools(server: McpServer): void {
 
   server.tool(
     "discover",
-    "Get intelligent song suggestions based on your taste and current session. " +
-    "Call get_session_state() first to understand your taste, then optionally pass a music intent. " +
-    "Returns scored candidates from 4 sources: continuation, comfort, context-fit, wildcard. " +
-    "Pick from suggestions and use add_song() to queue one, or play_song() to replace the current track.",
+    "Get song suggestions grouped by 4 lanes: continuation (same artist), comfort (favorites), " +
+    "context-fit (matching tags/mood), wildcard (new discoveries). " +
+    "Call get_session_state() first to understand taste, then pass an optional music intent. " +
+    "Pick from candidates and use add_song() to queue or play_song() to replace current track. " +
+    "Call again for fresh suggestions.",
     {
       mode: z.enum(["focus", "balanced", "explore"]).optional().default("balanced")
         .describe("focus=predictable, balanced=default, explore=adventurous"),
@@ -105,12 +107,27 @@ export function registerMcpTools(server: McpServer): void {
 
   server.tool(
     "get_session_state",
-    "Read your current taste profile, persona, and session state. " +
-    "Call this before deciding what to play next — it tells you what you're into, " +
-    "what you're bored of, and what vibe the current session is in. " +
-    "Use this context to inform your music intent when calling discover().",
+    "Read current context, persona, and listening history. " +
+    "Returns: time context (hour/period/day), persona (3 behavioral traits + taste text), " +
+    "and history (recent plays + top artists/tags stats). " +
+    "Use this to understand the listener's taste before calling discover(). " +
+    "Update persona taste text via update_persona() when you learn new preferences.",
     {},
     async () => handleGetSessionState(),
+  );
+
+  server.tool(
+    "update_persona",
+    "Update the listener's music taste description. Call this when the user explicitly mentions " +
+    "a music preference, or when you want to record taste insights learned from listening patterns. " +
+    "The taste text is free-form natural language describing what genres, artists, moods, and " +
+    "styles the listener prefers. This persists across sessions.",
+    {
+      taste: z.string().max(1000).describe(
+        "Free text taste description, e.g. 'Likes ambient, piano, post-rock. Evenings prefer acoustic.'. Use an empty string to clear it."
+      ),
+    },
+    async (args) => handleUpdatePersona(args),
   );
 }
 

@@ -73,6 +73,7 @@ export class HistoryStore {
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.exec(SCHEMA_SQL);
+    this.ensureSessionStateColumns();
   }
 
   /** Upsert track and insert play row. Returns playId. */
@@ -274,6 +275,88 @@ export class HistoryStore {
     `).run(key, weight, boredom, Date.now());
   }
 
+  /** Top artists by play count with average completion rate. */
+  getTopArtists(limit = 10): Array<{ artist: string; plays: number; avgCompletion: number }> {
+    return this.db.prepare(`
+      SELECT t.artist, COUNT(p.id) as plays,
+        AVG(CASE WHEN t.duration_sec > 0
+          THEN MIN(1.0, CAST(p.played_sec AS REAL) / t.duration_sec) ELSE 0 END) as avgCompletion
+      FROM plays p
+      JOIN tracks t ON t.id = p.track_id
+      GROUP BY LOWER(t.artist)
+      ORDER BY plays DESC
+      LIMIT ?
+    `).all(limit) as Array<{ artist: string; plays: number; avgCompletion: number }>;
+  }
+
+  /** Top tags by frequency across all tracks. */
+  getTopTags(limit = 10): Array<{ tag: string; frequency: number }> {
+    const rows = this.db.prepare(`
+      SELECT tags_json, play_count FROM tracks
+      WHERE tags_json != '[]' AND play_count > 0
+      ORDER BY play_count DESC
+      LIMIT 50
+    `).all() as Array<{ tags_json: string; play_count: number }>;
+
+    const freq: Record<string, number> = {};
+    for (const row of rows) {
+      try {
+        const tags: string[] = JSON.parse(row.tags_json);
+        for (const tag of tags) {
+          freq[tag.toLowerCase()] = (freq[tag.toLowerCase()] ?? 0) + row.play_count;
+        }
+      } catch { /* skip corrupt */ }
+    }
+
+    return Object.entries(freq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([tag, frequency]) => ({ tag, frequency }));
+  }
+
+  /** Recent plays with detailed info including tags. */
+  getRecentPlaysDetailed(limit = 20): Array<{
+    title: string; artist: string; completion: number;
+    skipped: boolean; playedAt: number; tags: string[];
+  }> {
+    const rows = this.db.prepare(`
+      SELECT t.title, t.artist, t.duration_sec, t.tags_json,
+        p.played_sec, p.skipped, p.started_at
+      FROM plays p
+      JOIN tracks t ON t.id = p.track_id
+      ORDER BY p.started_at DESC
+      LIMIT ?
+    `).all(limit) as Array<{
+      title: string; artist: string; duration_sec: number; tags_json: string;
+      played_sec: number; skipped: number; started_at: number;
+    }>;
+
+    return rows.map(r => ({
+      title: r.title,
+      artist: r.artist,
+      completion: r.duration_sec > 0 ? Math.min(1, r.played_sec / r.duration_sec) : 0,
+      skipped: r.skipped === 1,
+      playedAt: r.started_at,
+      tags: (() => { try { return JSON.parse(r.tags_json); } catch { return []; } })(),
+    }));
+  }
+
+  /** Read persona taste text from session_state. */
+  getPersonaTasteText(): string {
+    const row = this.db.prepare('SELECT persona_taste_text FROM session_state WHERE id = 1')
+      .get() as { persona_taste_text: string } | undefined;
+    return row?.persona_taste_text ?? '';
+  }
+
+  /** Save persona taste text to session_state. */
+  savePersonaTasteText(text: string): void {
+    // Ensure row exists first
+    this.db.prepare(`
+      INSERT INTO session_state (id, persona_taste_text) VALUES (1, ?)
+      ON CONFLICT(id) DO UPDATE SET persona_taste_text = excluded.persona_taste_text
+    `).run(text);
+  }
+
   /** Expose underlying database for cache access (discovery providers). */
   getDatabase(): Database.Database {
     return this.db;
@@ -288,6 +371,14 @@ export class HistoryStore {
   /** Close the database connection. */
   close(): void {
     this.db.close();
+  }
+
+  private ensureSessionStateColumns(): void {
+    const columns = this.db.prepare('PRAGMA table_info(session_state)').all() as Array<{ name: string }>;
+    const hasPersonaTasteText = columns.some((column) => column.name === 'persona_taste_text');
+    if (!hasPersonaTasteText) {
+      this.db.exec(`ALTER TABLE session_state ADD COLUMN persona_taste_text TEXT DEFAULT ''`);
+    }
   }
 }
 

@@ -4,3 +4,5 @@ dist/
 .env
 plans/
 .claude/
+.obsidian/
+repomix-output.xml

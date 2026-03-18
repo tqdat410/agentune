@@ -4,7 +4,6 @@ import { normalizeTrackId } from '../history/history-schema.js';
 import { getAppleSearchProvider } from '../providers/apple-search-provider.js';
 import type { AudioInfo, YouTubeProvider } from '../providers/youtube-provider.js';
 import type { SearchResult } from '../providers/youtube-provider.js';
-import { getTasteEngine } from '../taste/taste-engine.js';
 import { getWebServer } from '../web/web-server.js';
 import type { QueueItem, QueueManager } from './queue-manager.js';
 
@@ -83,16 +82,6 @@ export class QueuePlaybackController {
         if (store) {
           const position = await this.mpv.getPosition().catch(() => 0);
           store.updatePlay(this.currentPlayId, { played_sec: Math.round(position), skipped: true });
-
-          // Taste feedback: skip signal
-          if (nowPlaying) {
-            getTasteEngine()?.processFeedback(
-              { artist: nowPlaying.artist, title: nowPlaying.title, duration: nowPlaying.duration },
-              Math.round(position),
-              nowPlaying.duration,
-              true,
-            );
-          }
         }
       } catch (err) {
         console.error('[sbotify] Failed to record skip:', (err as Error).message);
@@ -134,14 +123,6 @@ export class QueuePlaybackController {
         const nowPlaying = this.queueManager.getNowPlaying();
         if (store && nowPlaying) {
           store.updatePlay(this.currentPlayId, { played_sec: nowPlaying.duration, skipped: false });
-
-          // Taste feedback: full play signal
-          getTasteEngine()?.processFeedback(
-            { artist: nowPlaying.artist, title: nowPlaying.title, duration: nowPlaying.duration },
-            nowPlaying.duration,
-            nowPlaying.duration,
-            false,
-          );
         }
       } catch (err) {
         console.error('[sbotify] Failed to record finish:', (err as Error).message);
@@ -242,12 +223,6 @@ export class QueuePlaybackController {
       if (store && nowPlaying) {
         const position = await this.mpv.getPosition().catch(() => 0);
         store.updatePlay(this.currentPlayId, { played_sec: Math.round(position), skipped: true });
-        getTasteEngine()?.processFeedback(
-          { artist: nowPlaying.artist, title: nowPlaying.title, duration: nowPlaying.duration },
-          Math.round(position),
-          nowPlaying.duration,
-          true,
-        );
       }
     } catch (err) {
       console.error('[sbotify] Failed to record interrupted play:', (err as Error).message);
