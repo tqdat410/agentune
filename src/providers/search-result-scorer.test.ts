@@ -141,6 +141,27 @@ test('Quality penalty: "reverb" reduces score', () => {
   assert(reverb[0].reasons.some(r => r.includes('reverb')), 'Should mention reverb penalty');
 });
 
+test('New quality penalties reduce score when keyword is absent from query', () => {
+  const keywords = ['teaser', 'preview', 'karaoke', 'cover', 'nightcore', 'sped up', 'shorts', 'playlist', 'full album'];
+
+  for (const keyword of keywords) {
+    const normal = scoreSearchResults([createResult({ title: 'Shape of You' })], 'Shape of You');
+    const penalized = scoreSearchResults([createResult({ title: `Shape of You ${keyword}` })], 'Shape of You');
+
+    assert(penalized[0].score < normal[0].score, `"${keyword}" should reduce score`);
+    assert(penalized[0].reasons.some(r => r.includes(keyword)), `Should mention ${keyword} penalty`);
+  }
+});
+
+test('New quality penalties do not apply when keyword is present in query', () => {
+  const scored = scoreSearchResults(
+    [createResult({ title: 'Shape of You Cover' })],
+    'Shape of You Cover',
+  );
+
+  assert(!scored[0].reasons.some(r => r.includes('cover penalty')), 'Should not penalize cover when in query');
+});
+
 test('No penalty for "live" when present in query', () => {
   const scored = scoreSearchResults(
     [createResult({ title: 'Shape of You Live' })],

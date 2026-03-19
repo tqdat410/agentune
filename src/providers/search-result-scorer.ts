@@ -82,6 +82,15 @@ function scoreResult(result: SearchResult, title: string, artist?: string): Scor
     ['slowed', -0.4],
     ['8d', -0.4],
     ['reverb', -0.4],
+    ['teaser', -0.3],
+    ['preview', -0.3],
+    ['karaoke', -0.4],
+    ['cover', -0.4],
+    ['nightcore', -0.4],
+    ['sped up', -0.4],
+    ['shorts', -0.3],
+    ['playlist', -0.2],
+    ['full album', -0.2],
   ];
   for (const [keyword, penalty] of penalties) {
     if (rt.includes(keyword) && !queryContains(fullQuery, keyword)) {

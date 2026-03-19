@@ -63,6 +63,14 @@ export interface PreferenceRecord {
   last_seen_at: number;
 }
 
+export interface BatchTrackStats {
+  trackId: string;
+  playCount: number;
+  avgCompletion: number;
+  skipRate: number;
+  hoursSinceLastPlay: number;
+}
+
 export class HistoryStore {
   private db: Database.Database;
 
@@ -189,6 +197,64 @@ export class HistoryStore {
       avgCompletion: Math.min(1, stats.avg_completion ?? 0),
       skipRate: stats.total > 0 ? stats.skip_count / stats.total : 0,
     };
+  }
+
+  /** Batch stats for ranking without N-per-candidate SQLite queries. */
+  batchGetTrackStats(trackIds: string[]): Map<string, BatchTrackStats> {
+    const uniqueTrackIds = [...new Set(trackIds)];
+    if (uniqueTrackIds.length === 0) return new Map();
+
+    const placeholders = uniqueTrackIds.map(() => '?').join(', ');
+    const trackRows = this.db.prepare(`
+      SELECT id, play_count, duration_sec
+      FROM tracks
+      WHERE id IN (${placeholders})
+    `).all(...uniqueTrackIds) as Array<{ id: string; play_count: number; duration_sec: number }>;
+
+    const trackMap = new Map(trackRows.map((row) => [row.id, row]));
+    const statsRows = this.db.prepare(`
+      SELECT
+        p.track_id as trackId,
+        COUNT(*) as total,
+        AVG(
+          CASE WHEN t.duration_sec > 0
+            THEN MIN(1.0, CAST(p.played_sec AS REAL) / t.duration_sec)
+            ELSE 0
+          END
+        ) as avgCompletion,
+        AVG(CASE WHEN p.skipped = 1 THEN 1.0 ELSE 0 END) as skipRate,
+        MAX(p.started_at) as lastPlayedAt
+      FROM plays p
+      JOIN tracks t ON t.id = p.track_id
+      WHERE p.track_id IN (${placeholders})
+      GROUP BY p.track_id
+    `).all(...uniqueTrackIds) as Array<{
+      trackId: string;
+      total: number;
+      avgCompletion: number | null;
+      skipRate: number | null;
+      lastPlayedAt: number | null;
+    }>;
+
+    const statsMap = new Map(statsRows.map((row) => [row.trackId, row]));
+    const now = Date.now();
+    const batchStats = new Map<string, BatchTrackStats>();
+
+    for (const trackId of uniqueTrackIds) {
+      const track = trackMap.get(trackId);
+      const stats = statsMap.get(trackId);
+      batchStats.set(trackId, {
+        trackId,
+        playCount: track?.play_count ?? 0,
+        avgCompletion: Math.min(1, stats?.avgCompletion ?? 0),
+        skipRate: stats?.skipRate ?? 0,
+        hoursSinceLastPlay: stats?.lastPlayedAt
+          ? (now - stats.lastPlayedAt) / (1000 * 60 * 60)
+          : Infinity,
+      });
+    }
+
+    return batchStats;
   }
 
   /** Most played tracks with high completion rate. */

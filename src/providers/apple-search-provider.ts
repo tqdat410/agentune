@@ -17,6 +17,8 @@ export interface AppleTrack {
   genre: string;
   durationMs: number;
   artwork: string;
+  trackId?: number;
+  artistId?: number;
 }
 
 interface AppleApiResult {
@@ -26,6 +28,8 @@ interface AppleApiResult {
   primaryGenreName?: string;
   trackTimeMillis?: number;
   artworkUrl100?: string;
+  trackId?: number;
+  artistId?: number;
 }
 
 export class AppleSearchProvider {
@@ -128,6 +132,8 @@ export class AppleSearchProvider {
         genre: r.primaryGenreName ?? '',
         durationMs: r.trackTimeMillis ?? 0,
         artwork: r.artworkUrl100 ?? '',
+        trackId: r.trackId,
+        artistId: r.artistId,
       }));
     } catch (err) {
       console.error(`[sbotify] Apple fetch failed: ${(err as Error).message}`);

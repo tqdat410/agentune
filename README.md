@@ -7,7 +7,7 @@ sbotify is a Model Context Protocol (MCP) server that enables coding agents (Cla
 ## Features
 
 - **Agent-driven music control**: Taste-aware `discover -> play_song/add_song -> feedback` flow via MCP
-- **Apple-first discovery pipeline**: grouped 4-lane suggestions (continuation, comfort, context-fit, wildcard) for agent selection
+- **Apple-only discover pipeline**: flat, paginated Apple candidates with optional `artist` / `genres` seeds
 - **Browser dashboard**: Real-time now-playing info + volume slider on localhost:3737
 - **Headless playback**: Audio plays independently via mpv (no browser needed)
 - **Cross-platform**: Works on Windows, macOS, Linux
@@ -65,10 +65,15 @@ Add to your `Claude.md` or claude config:
 ```
 
 Then ask Claude Code:
-> "Call get_session_state, discover a focus track, then add it to the queue"
+> "Call get_session_state, discover page 1 for ambient, then add one track to the queue"
 > "Play Blinding Lights by The Weeknd right now"
 > "What song is playing?"
 > "Skip to the next track"
+
+Current `discover` contract:
+- `discover(page?, limit?, artist?, genres?)` returns a flat page of Apple candidates.
+- `discover(page=2)` continues the same cached snapshot when more results exist.
+- Legacy `mode` and `intent` params are still accepted for compatibility, but ignored.
 
 ### Browser Dashboard
 

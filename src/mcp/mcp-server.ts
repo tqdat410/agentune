@@ -49,21 +49,20 @@ export function registerMcpTools(server: McpServer): void {
 
   server.tool(
     "discover",
-    "Get song suggestions grouped by 4 lanes: continuation (same artist), comfort (favorites), " +
-    "context-fit (matching tags/mood), wildcard (new discoveries). " +
-    "Call get_session_state() first to understand taste, then pass an optional music intent. " +
-    "Pick from candidates and use add_song() to queue or play_song() to replace current track. " +
-    "Call again for fresh suggestions.",
+    "Get song suggestions. Apple-powered discovery with persona-aware ranking. " +
+    "Optionally filter by artist or genres. Paginated — call with page=2 for more. " +
+    "Pick from candidates and use add_song() to queue or play_song() to replace current track.",
     {
-      mode: z.enum(["focus", "balanced", "explore"]).optional().default("balanced")
-        .describe("focus=predictable, balanced=default, explore=adventurous"),
-      intent: z.object({
-        energy: z.number().min(0).max(1).optional().describe("0=calm, 1=energetic"),
-        valence: z.number().min(0).max(1).optional().describe("0=dark, 1=bright"),
-        novelty: z.number().min(0).max(1).optional().describe("0=familiar, 1=new"),
-        allowed_tags: z.array(z.string()).optional().describe("Tags to favor"),
-        avoid_tags: z.array(z.string()).optional().describe("Tags to avoid"),
-      }).optional().describe("Music intent — omit to auto-infer from taste state"),
+      page: z.number().int().min(1).optional().default(1)
+        .describe("Page number (default 1)"),
+      limit: z.number().int().min(1).max(50).optional().default(10)
+        .describe("Results per page (default 10, max 50)"),
+      artist: z.string().max(200).optional()
+        .describe("Seed artist for discovery"),
+      genres: z.array(z.string().max(100)).max(10).optional()
+        .describe("Seed genres for discovery (max 10)"),
+      mode: z.string().optional().describe("Deprecated — ignored"),
+      intent: z.unknown().optional().describe("Deprecated — ignored"),
     },
     async (args) => handleDiscover(args),
   );

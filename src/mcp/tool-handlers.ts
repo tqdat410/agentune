@@ -2,12 +2,13 @@
 
 import { getMpvController } from '../audio/mpv-controller.js';
 import { getHistoryStore } from '../history/history-store.js';
-import { getSmartSearchProvider } from '../providers/smart-search-provider.js';
 import { getAppleSearchProvider } from '../providers/apple-search-provider.js';
 import { getYoutubeProvider } from '../providers/youtube-provider.js';
 import { resolveSong } from './song-resolver.js';
-import { CandidateGenerator, type MusicIntent } from '../taste/candidate-generator.js';
 import { getTasteEngine } from '../taste/taste-engine.js';
+import { DiscoverBatchBuilder } from '../taste/discover-batch-builder.js';
+import { createDiscoverPipeline, getDiscoverPipeline } from '../taste/discover-pipeline.js';
+import { invalidateDiscoverCache } from '../taste/discover-pagination-cache.js';
 import { getQueuePlaybackController } from '../queue/queue-playback-controller.js';
 import { getQueueManager } from '../queue/queue-manager.js';
 import { getWebServer } from '../web/web-server.js';
@@ -50,6 +51,7 @@ export async function handlePlaySong(args: { title: string; artist?: string }): 
       canonicalArtist: resolved.canonicalArtist,
       canonicalTitle: resolved.canonicalTitle,
     });
+    invalidateDiscoverCache();
 
     return textResult({
       matched: true,
@@ -99,6 +101,7 @@ export async function handleAddSong(args: { title: string; artist?: string }): P
     });
     const queueManager = getQueueManager();
     const nowPlaying = queueManager?.getNowPlaying() ?? null;
+    invalidateDiscoverCache();
 
     return textResult({
       matched: true,
@@ -124,51 +127,44 @@ export async function handleAddSong(args: { title: string; artist?: string }): P
   }
 }
 
-export async function handleDiscover(args: { mode?: string; intent?: MusicIntent }): Promise<ToolResult> {
+export async function handleDiscover(args: {
+  page?: number;
+  limit?: number;
+  artist?: string;
+  genres?: string[];
+  mode?: unknown;
+  intent?: unknown;
+}): Promise<ToolResult> {
   try {
     const store = getHistoryStore();
     if (!store) return errorResult('History store not initialized.');
-
-    const mode = (args.mode ?? 'balanced') as 'focus' | 'balanced' | 'explore';
-
-    const smartSearch = getSmartSearchProvider();
     const apple = getAppleSearchProvider();
-    const generator = new CandidateGenerator(smartSearch, apple, store);
+    if (!apple) return errorResult('Apple provider not initialized.');
+    const taste = getTasteEngine();
+    if (!taste) return errorResult('Taste engine not initialized.');
 
-    const queueManager = getQueueManager();
-    const nowPlaying = queueManager?.getNowPlaying() ?? null;
-    const currentTrack = nowPlaying
-      ? { artist: nowPlaying.artist, title: nowPlaying.title, duration: nowPlaying.duration }
-      : null;
+    const pipeline = getDiscoverPipeline() ?? createDiscoverPipeline(
+      new DiscoverBatchBuilder(apple, store),
+      store,
+      taste,
+    );
+    const result = await pipeline.discover(args);
+    const { emptyReason, ...response } = result;
 
-    const grouped = await generator.generate(currentTrack, args.intent, mode);
-    const isEmpty = Object.values(grouped).every(arr => arr.length === 0);
-
-    if (isEmpty) {
+    if (response.candidates.length === 0) {
       return textResult({
-        candidates: grouped,
-        message: 'No candidates found. Try adding a track first so discover has context.',
+        ...response,
+        message: emptyReason === 'page_exhausted'
+          ? 'No more discover candidates in this snapshot. Change artist/genres or go back to page=1.'
+          : 'No discover candidates found yet. Play more music first, or pass artist/genres seeds.',
       });
     }
 
-    const mapCandidate = (c: { title: string; artist: string; tags?: string[]; provider: string }) => ({
-      title: c.title,
-      artist: c.artist,
-      tags: c.tags ?? [],
-      source: c.provider,
-    });
-
     return textResult({
-      basedOn: currentTrack ? { title: currentTrack.title, artist: currentTrack.artist } : null,
-      mode,
-      candidates: {
-        continuation: grouped.continuation.map(mapCandidate),
-        comfort: grouped.comfort.map(mapCandidate),
-        contextFit: grouped.contextFit.map(mapCandidate),
-        wildcard: grouped.wildcard.map(mapCandidate),
-      },
-      more_available: true,
-      tip: 'Call discover() again for different suggestions. Use add_song() or play_song() to pick.',
+      ...response,
+      tip: response.hasMore
+        ? 'Use add_song() or play_song() to pick, then call discover(page=2) for more candidates.'
+        : 'Use add_song() or play_song() to pick from these candidates.',
     });
   } catch (err) {
     return errorResult(`Discover failed: ${(err as Error).message}`);
