@@ -1,11 +1,12 @@
 // mpv IPC wrapper — controls headless mpv for audio playback
 // Uses node-mpv v1.5 which spawns mpv in constructor; methods are sync socket commands
 
-import mpvAPI from 'node-mpv';
+import type mpvAPI from 'node-mpv';
 import { execSync } from 'child_process';
 import { EventEmitter } from 'events';
 import { unlinkSync } from 'fs';
 import { getIpcPath } from './platform-ipc-path.js';
+import { loadNodeMpvApi, resolvePreferredMpvBinary } from './node-mpv-bootstrap.js';
 export interface TrackMeta {
   id: string;
   title: string;
@@ -66,16 +67,20 @@ export class MpvController extends EventEmitter {
       try { unlinkSync(ipcPath); } catch { /* no stale socket */ }
     }
 
+    const mpvApi = loadNodeMpvApi();
+
     // mpv process spawns here in the constructor
-    this.player = new mpvAPI({
+    this.player = new mpvApi({
       audio_only: true,
       auto_restart: true,
+      binary: resolvePreferredMpvBinary(),
       ipc_command: '--input-ipc-server',
       socket: ipcPath,
     }, [
       '--no-video',
       '--idle',
       '--no-config',
+      '--terminal=no',
     ]);
 
     this.attachPlayerEvents(this.player);
