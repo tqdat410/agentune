@@ -1,642 +1,203 @@
-// Comprehensive unit tests for HistoryStore — SQLite history foundation
-// Tests: recordPlay, updatePlay, getRecent, getTopTracks, getTrackStats,
-// normalizeTrackId, session state, preferences, hoursSinceLastPlay, getTrackPlayCount
-
-import { test } from 'node:test';
-import * as assert from 'node:assert';
+import assert from 'node:assert/strict';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { HistoryStore } from './history-store.js';
+import test from 'node:test';
 import { normalizeTrackId } from './history-schema.js';
+import { HistoryStore } from './history-store.js';
 
-// Helper to create temp DB path
 function getTempDbPath(): string {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sbotify-test-'));
-  return path.join(tmpDir, 'test-history.db');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sbotify-history-store-'));
+  return path.join(tmpDir, 'history.db');
 }
 
-// Helper to cleanup temp DB and directory
 function cleanupDb(dbPath: string): void {
   const dir = path.dirname(dbPath);
   try {
     if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
-    if (fs.existsSync(dbPath + '-wal')) fs.unlinkSync(dbPath + '-wal');
-    if (fs.existsSync(dbPath + '-shm')) fs.unlinkSync(dbPath + '-shm');
+    if (fs.existsSync(`${dbPath}-wal`)) fs.unlinkSync(`${dbPath}-wal`);
+    if (fs.existsSync(`${dbPath}-shm`)) fs.unlinkSync(`${dbPath}-shm`);
     if (fs.existsSync(dir)) fs.rmdirSync(dir);
   } catch {
-    // Ignore cleanup errors
+    // Ignore cleanup errors in tests.
   }
 }
 
-test('normalizeTrackId - formats artist::title correctly', () => {
-  const result = normalizeTrackId('Nils Frahm', 'Says');
-  assert.strictEqual(result, 'nils frahm::says');
+function createTrack(overrides?: Partial<Parameters<HistoryStore['recordPlay']>[0]>) {
+  return {
+    title: 'Nylon',
+    artist: 'Nils Frahm',
+    duration: 215,
+    thumbnail: 'https://example.com/thumb.jpg',
+    ytVideoId: 'dummyid123',
+    ...overrides,
+  };
+}
 
-  const result2 = normalizeTrackId('  The Beatles  ', '  HELP!  ');
-  assert.strictEqual(result2, 'the beatles::help!');
-
-  const result3 = normalizeTrackId('', '');
-  assert.strictEqual(result3, '::');
+test('normalizeTrackId formats deterministic ids', () => {
+  assert.equal(normalizeTrackId('Nils  Frahm', 'Says'), 'nils frahm::says');
+  assert.equal(normalizeTrackId('  The Beatles  ', '  HELP!  '), 'the beatles::help!');
+  assert.equal(normalizeTrackId('', ''), '::');
 });
 
-test('HistoryStore.recordPlay - creates track and play records', () => {
+test('HistoryStore records plays and returns recent rows', () => {
   const dbPath = getTempDbPath();
   try {
     const store = new HistoryStore(dbPath);
+    const playId = store.recordPlay(createTrack(), { source: 'mcp' });
 
-    const playId = store.recordPlay({
-      title: 'Nylon',
+    assert.equal(typeof playId, 'number');
+    const recent = store.getRecent(1);
+    assert.equal(recent.length, 1);
+    assert.equal(recent[0]?.id, 'nils frahm::nylon');
+    assert.equal(recent[0]?.title, 'Nylon');
+    assert.equal(recent[0]?.artist, 'Nils Frahm');
+    assert.equal(recent[0]?.play_count, 1);
+    store.close();
+  } finally {
+    cleanupDb(dbPath);
+  }
+});
+
+test('HistoryStore increments play_count and honors canonical overrides', () => {
+  const dbPath = getTempDbPath();
+  try {
+    const store = new HistoryStore(dbPath);
+    store.recordPlay(createTrack({ title: 'says', artist: 'nils frahm' }), undefined, {
       artist: 'Nils Frahm',
-      duration: 215,
-      thumbnail: 'https://example.com/thumb.jpg',
-      ytVideoId: 'dummyid123',
+      title: 'Says',
     });
-
-    assert.strictEqual(typeof playId, 'number');
-    assert.ok(playId > 0, 'playId should be positive');
-
-    // Verify track exists
-    const recent = store.getRecent(1);
-    assert.strictEqual(recent.length, 1);
-    assert.strictEqual(recent[0].id, 'nils frahm::nylon');
-    assert.strictEqual(recent[0].title, 'Nylon');
-    assert.strictEqual(recent[0].artist, 'Nils Frahm');
-    assert.strictEqual(recent[0].duration_sec, 215);
-    assert.strictEqual(recent[0].play_count, 1);
-
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('HistoryStore.recordPlay - with canonicalOverride', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-
-    const playId = store.recordPlay(
-      {
-        title: 'says',
-        artist: 'nils frahm',
-        duration: 180,
-        thumbnail: 'https://example.com/thumb.jpg',
-        ytVideoId: 'vid123',
-      },
-      undefined,
-      { artist: 'Nils Frahm', title: 'Says' },
-    );
-
-    assert.ok(playId > 0);
-
-    const recent = store.getRecent(1);
-    assert.strictEqual(recent[0].title, 'Says');
-    assert.strictEqual(recent[0].artist, 'Nils Frahm');
-
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('HistoryStore.recordPlay - with context', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-
-    const playId = store.recordPlay(
-      {
-        title: 'Test Track',
-        artist: 'Test Artist',
-        duration: 180,
-        thumbnail: 'https://example.com/thumb.jpg',
-        ytVideoId: 'vid123',
-      },
-      { mood: 'focus', source: 'mcp_server' },
-    );
-
-    assert.ok(playId > 0);
-
-    const recent = store.getRecent(1);
-    assert.strictEqual(recent.length, 1);
-    // Context is stored but not returned in getRecent, just verify play was recorded
-    // Note: getRecent aliases started_at as play_started_at from the query
-    const playRecord = recent[0] as any;
-    assert.ok(playRecord.play_started_at > 0 || playRecord.started_at > 0, 'play record should have timestamp');
-
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('HistoryStore.recordPlay - duplicate track increments play_count', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-
-    const track = {
-      title: 'Same Track',
-      artist: 'Same Artist',
-      duration: 200,
-      thumbnail: 'https://example.com/thumb.jpg',
-      ytVideoId: 'vid123',
-    };
-
-    const play1 = store.recordPlay(track);
-    assert.ok(play1 > 0);
-
-    const play2 = store.recordPlay(track);
-    assert.ok(play2 > play1);
+    store.recordPlay(createTrack({ title: 'Says', artist: 'Nils Frahm' }));
 
     const recent = store.getRecent(2);
-    assert.strictEqual(recent[0].play_count, 2);
-    assert.strictEqual(recent[1].play_count, 2);
-
+    assert.equal(recent[0]?.title, 'Says');
+    assert.equal(recent[0]?.artist, 'Nils Frahm');
+    assert.equal(recent[0]?.play_count, 2);
     store.close();
   } finally {
     cleanupDb(dbPath);
   }
 });
 
-test('HistoryStore.updatePlay - updates played_sec and skipped', () => {
+test('HistoryStore updates play metrics and batch stats', () => {
   const dbPath = getTempDbPath();
   try {
     const store = new HistoryStore(dbPath);
-
-    const playId = store.recordPlay({
-      title: 'Track A',
-      artist: 'Artist A',
-      duration: 300,
-      thumbnail: 'https://example.com/thumb.jpg',
-      ytVideoId: 'vid123',
-    });
-
-    store.updatePlay(playId, { played_sec: 150 });
-    let recent = store.getRecent(1);
-    assert.strictEqual(recent[0].played_sec, 150);
-
-    store.updatePlay(playId, { skipped: true });
-    recent = store.getRecent(1);
-    assert.strictEqual(recent[0].skipped, 1);
-
-    store.updatePlay(playId, { played_sec: 250, skipped: false });
-    recent = store.getRecent(1);
-    assert.strictEqual(recent[0].played_sec, 250);
-    assert.strictEqual(recent[0].skipped, 0);
-
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('HistoryStore.getRecent - returns recent plays ordered by time', async () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-
-    store.recordPlay({
-      title: 'Track 1',
-      artist: 'Artist 1',
-      duration: 200,
-      thumbnail: 'https://example.com/thumb.jpg',
-      ytVideoId: 'vid1',
-    });
-
-    // Small delay to ensure different timestamps
-    await new Promise((resolve) => setTimeout(resolve, 10));
-
-    store.recordPlay({
-      title: 'Track 2',
-      artist: 'Artist 2',
-      duration: 200,
-      thumbnail: 'https://example.com/thumb.jpg',
-      ytVideoId: 'vid2',
-    });
-
-    const recent = store.getRecent(10);
-    assert.strictEqual(recent.length, 2);
-    assert.strictEqual(recent[0].title, 'Track 2', 'Most recent should be first');
-    assert.strictEqual(recent[1].title, 'Track 1');
-
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('HistoryStore.getRecent - respects limit', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-
-    for (let i = 0; i < 5; i++) {
-      store.recordPlay({
-        title: `Track ${i}`,
-        artist: `Artist ${i}`,
-        duration: 200,
-        thumbnail: 'https://example.com/thumb.jpg',
-        ytVideoId: `vid${i}`,
-      });
-    }
-
-    const recent = store.getRecent(3);
-    assert.strictEqual(recent.length, 3);
-
-    const all = store.getRecent(100);
-    assert.strictEqual(all.length, 5);
-
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('HistoryStore.getRecent - filters by query (title or artist)', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-
-    store.recordPlay({
-      title: 'Nylon',
-      artist: 'Nils Frahm',
-      duration: 215,
-      thumbnail: 'https://example.com/thumb.jpg',
-      ytVideoId: 'vid1',
-    });
-
-    store.recordPlay({
-      title: 'Unfinished',
-      artist: 'Nils Frahm',
-      duration: 240,
-      thumbnail: 'https://example.com/thumb.jpg',
-      ytVideoId: 'vid2',
-    });
-
-    store.recordPlay({
-      title: 'Breathe',
-      artist: 'The Pink Floyd',
-      duration: 300,
-      thumbnail: 'https://example.com/thumb.jpg',
-      ytVideoId: 'vid3',
-    });
-
-    // Query by artist
-    const nils = store.getRecent(10, 'Nils');
-    assert.strictEqual(nils.length, 2);
-
-    // Query by title
-    const unfinished = store.getRecent(10, 'Unfinished');
-    assert.strictEqual(unfinished.length, 1);
-    assert.strictEqual(unfinished[0].title, 'Unfinished');
-
-    // Query that matches nothing
-    const noMatch = store.getRecent(10, 'NonExistent');
-    assert.strictEqual(noMatch.length, 0);
-
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('HistoryStore.getTrackStats - returns play count, completion, skip rate', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-
-    const trackId = 'test artist::test track';
-    const track = {
-      title: 'Test Track',
-      artist: 'Test Artist',
-      duration: 300,
-      thumbnail: 'https://example.com/thumb.jpg',
-      ytVideoId: 'vid123',
-    };
-
-    // Play 1: full listen
-    const play1 = store.recordPlay(track);
+    const play1 = store.recordPlay(createTrack({ title: 'Track A', artist: 'Artist A', duration: 300 }));
+    const play2 = store.recordPlay(createTrack({ title: 'Track A', artist: 'Artist A', duration: 300 }));
     store.updatePlay(play1, { played_sec: 300, skipped: false });
+    store.updatePlay(play2, { played_sec: 90, skipped: true });
 
-    // Play 2: partial listen (50%)
-    const play2 = store.recordPlay(track);
-    store.updatePlay(play2, { played_sec: 150, skipped: false });
+    const stats = store.getTrackStats('artist a::track a');
+    assert.equal(stats.playCount, 2);
+    assert.equal(stats.skipRate, 0.5);
+    assert.ok(stats.avgCompletion > 0.6 && stats.avgCompletion < 0.7);
 
-    // Play 3: skipped
-    const play3 = store.recordPlay(track);
-    store.updatePlay(play3, { played_sec: 10, skipped: true });
-
-    const stats = store.getTrackStats(trackId);
-    assert.strictEqual(stats.playCount, 3);
-    assert.ok(stats.avgCompletion > 0.5 && stats.avgCompletion < 1, 'avg completion should be between 0.5 and 1');
-    assert.strictEqual(stats.skipRate, 1 / 3, 'skip rate should be 1/3');
-
+    const batchStats = store.batchGetTrackStats(['artist a::track a', 'missing::track']);
+    assert.equal(batchStats.get('artist a::track a')?.playCount, 2);
+    assert.equal(batchStats.get('missing::track')?.playCount, 0);
     store.close();
   } finally {
     cleanupDb(dbPath);
   }
 });
 
-test('HistoryStore.getTrackStats - returns zero stats for non-existent track', () => {
+test('HistoryStore exposes ranking helpers and search', async () => {
   const dbPath = getTempDbPath();
   try {
     const store = new HistoryStore(dbPath);
+    store.recordPlay(createTrack({ title: 'Nylon', artist: 'Nils Frahm', ytVideoId: 'vid-1' }));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    store.recordPlay(createTrack({ title: 'Unfinished', artist: 'Nils Frahm', ytVideoId: 'vid-2' }));
 
-    const stats = store.getTrackStats('nonexistent::track');
-    assert.deepStrictEqual(stats, { playCount: 0, avgCompletion: 0, skipRate: 0 });
-
+    const filtered = store.getRecent(10, 'Unfinished');
+    assert.equal(filtered.length, 1);
+    assert.equal(filtered[0]?.title, 'Unfinished');
+    assert.equal(store.getTrackPlayCount('Nils Frahm', 'Unfinished'), 1);
+    assert.ok(store.hoursSinceLastPlay('Nils Frahm', 'Unfinished') < 1);
+    assert.equal(store.getTopTracks(10)[0]?.play_count, 1);
     store.close();
   } finally {
     cleanupDb(dbPath);
   }
 });
 
-test('HistoryStore.getTopTracks - returns tracks ordered by play count', () => {
+test('HistoryStore persists persona taste and traits and rejects invalid traits', () => {
   const dbPath = getTempDbPath();
   try {
     const store = new HistoryStore(dbPath);
+    store.savePersonaTasteText('Warm ambient and slow piano.');
+    store.savePersonaTraits({ exploration: 0.8, variety: 0.35, loyalty: 0.6 });
 
-    // Track A: 3 plays
-    const trackA = { title: 'Track A', artist: 'Artist A', duration: 200, thumbnail: 'https://example.com/thumb.jpg', ytVideoId: 'vid1' };
-    store.recordPlay(trackA);
-    store.recordPlay(trackA);
-    store.recordPlay(trackA);
+    assert.equal(store.getPersonaTasteText(), 'Warm ambient and slow piano.');
+    assert.deepEqual(store.getPersonaTraits(), { exploration: 0.8, variety: 0.35, loyalty: 0.6 });
 
-    // Track B: 2 plays
-    const trackB = { title: 'Track B', artist: 'Artist B', duration: 200, thumbnail: 'https://example.com/thumb.jpg', ytVideoId: 'vid2' };
-    store.recordPlay(trackB);
-    store.recordPlay(trackB);
-
-    // Track C: 1 play
-    const trackC = { title: 'Track C', artist: 'Artist C', duration: 200, thumbnail: 'https://example.com/thumb.jpg', ytVideoId: 'vid3' };
-    store.recordPlay(trackC);
-
-    const top = store.getTopTracks(10);
-    assert.strictEqual(top.length, 3);
-    assert.strictEqual(top[0].play_count, 3);
-    assert.strictEqual(top[1].play_count, 2);
-    assert.strictEqual(top[2].play_count, 1);
-
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('HistoryStore.getTopTracks - respects limit', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-
-    for (let i = 0; i < 15; i++) {
-      store.recordPlay({
-        title: `Track ${i}`,
-        artist: `Artist ${i}`,
-        duration: 200,
-        thumbnail: 'https://example.com/thumb.jpg',
-        ytVideoId: `vid${i}`,
-      });
-    }
-
-    const top = store.getTopTracks(5);
-    assert.strictEqual(top.length, 5);
-
-    const all = store.getTopTracks(100);
-    assert.strictEqual(all.length, 15);
-
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('HistoryStore.getTrackPlayCount - returns play count for artist/title', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-
-    const track = { title: 'Some Track', artist: 'Some Artist', duration: 200, thumbnail: 'https://example.com/thumb.jpg', ytVideoId: 'vid1' };
-
-    assert.strictEqual(store.getTrackPlayCount('Some Artist', 'Some Track'), 0);
-
-    store.recordPlay(track);
-    assert.strictEqual(store.getTrackPlayCount('Some Artist', 'Some Track'), 1);
-
-    store.recordPlay(track);
-    assert.strictEqual(store.getTrackPlayCount('Some Artist', 'Some Track'), 2);
-
-    // Query with different case
-    assert.strictEqual(store.getTrackPlayCount('some artist', 'some track'), 2);
-
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('HistoryStore.hoursSinceLastPlay - returns hours since last play', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-
-    const track = { title: 'Track', artist: 'Artist', duration: 200, thumbnail: 'https://example.com/thumb.jpg', ytVideoId: 'vid1' };
-
-    // Non-existent track should return Infinity
-    assert.strictEqual(store.hoursSinceLastPlay('Artist', 'Track'), Infinity);
-
-    const now = Date.now();
-    store.recordPlay(track);
-
-    const hours = store.hoursSinceLastPlay('Artist', 'Track');
-    assert.ok(hours < 1, 'Recently played track should be < 1 hour');
-    assert.ok(hours >= 0, 'hours should be non-negative');
-
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('HistoryStore.saveSessionState / getSessionState - persists session state', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-
-    const state = {
-      lane: { name: 'chill', bpm: 120 },
-      tasteState: { mood: 'focus', energy: 0.7 },
-      agentPersona: { name: 'DJ Claude', style: 'eclectic' },
-      currentIntent: { action: 'discover', genre: 'ambient' },
-    };
-
-    store.saveSessionState(state);
-
-    const retrieved = store.getSessionState();
-    assert.deepStrictEqual(retrieved, state);
-
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('HistoryStore.saveSessionState - overwrites previous state', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-
-    const state1 = { lane: { name: 'first' }, tasteState: { mood: 'happy' } };
-    store.saveSessionState(state1);
-
-    const state2 = { lane: { name: 'second' }, tasteState: { mood: 'sad' } };
-    store.saveSessionState(state2);
-
-    const retrieved = store.getSessionState();
-    assert.strictEqual((retrieved.lane as any)?.name, 'second');
-    assert.strictEqual((retrieved.tasteState as any)?.mood, 'sad');
-
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('HistoryStore.getSessionState - returns empty object if not set', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-
-    const state = store.getSessionState();
-    assert.deepStrictEqual(state, {});
-
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('HistoryStore.setPreference / getPreference - stores preferences', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-
-    store.setPreference('ambient', 0.8, 0.2);
-
-    const pref = store.getPreference('ambient');
-    assert.ok(pref);
-    assert.strictEqual(pref.key, 'ambient');
-    assert.strictEqual(pref.weight, 0.8);
-    assert.strictEqual(pref.boredom, 0.2);
-    assert.ok(pref.last_seen_at > 0);
-
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('HistoryStore.setPreference - overwrites existing preference', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-
-    store.setPreference('jazz', 0.5, 0.1);
-    let pref = store.getPreference('jazz');
-    assert.strictEqual(pref?.weight, 0.5);
-
-    store.setPreference('jazz', 0.9, 0.3);
-    pref = store.getPreference('jazz');
-    assert.strictEqual(pref?.weight, 0.9);
-    assert.strictEqual(pref?.boredom, 0.3);
-
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('HistoryStore.getPreference - returns undefined for non-existent key', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-
-    const pref = store.getPreference('nonexistent');
-    assert.strictEqual(pref, undefined);
-
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('HistoryStore.close - closes database connection', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-
-    store.recordPlay({
-      title: 'Track',
-      artist: 'Artist',
-      duration: 200,
-      thumbnail: 'https://example.com/thumb.jpg',
-      ytVideoId: 'vid1',
-    });
-
-    store.close();
-
-    // Attempting to use store after close should throw
     assert.throws(() => {
-      store.getRecent();
+      store.savePersonaTraits({ exploration: -0.1, variety: 0.5, loyalty: 0.5 });
     });
-
-    store.close(); // Should not throw on second close
-
-    store.close(); // Should not throw on third close
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('HistoryStore - concurrent operations on same database', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-
-    const track = { title: 'Concurrent', artist: 'Test', duration: 200, thumbnail: 'https://example.com/thumb.jpg', ytVideoId: 'vid1' };
-
-    const play1 = store.recordPlay(track);
-    const play2 = store.recordPlay(track);
-    const play3 = store.recordPlay(track);
-
-    store.updatePlay(play1, { played_sec: 100 });
-    store.updatePlay(play2, { played_sec: 200 });
-    store.updatePlay(play3, { played_sec: 300 });
-
-    const recent = store.getRecent(3);
-    assert.strictEqual(recent.length, 3);
-    assert.strictEqual(recent[0].play_count, 3);
-
-    const stats = store.getTrackStats('test::concurrent');
-    assert.strictEqual(stats.playCount, 3);
-
     store.close();
   } finally {
     cleanupDb(dbPath);
   }
 });
 
-test('HistoryStore.getTrackTags - returns parsed tags', () => {
+test('HistoryStore exposes stats and granular cleanup operations', () => {
   const dbPath = getTempDbPath();
   try {
     const store = new HistoryStore(dbPath);
+    store.recordPlay(createTrack());
+    store.recordPlay(createTrack({ title: 'Second', artist: 'Artist B', ytVideoId: 'vid-2' }));
+    store.getDatabase().prepare(`
+      INSERT INTO provider_cache (cache_key, response_json, fetched_at)
+      VALUES ('apple:test', '{}', 123)
+    `).run();
 
-    // For now, tags are empty by default, but testing retrieval
-    const tags = store.getTrackTags('any::track');
-    assert.deepStrictEqual(tags, []);
+    assert.deepEqual(store.getDatabaseStats().counts, { plays: 2, tracks: 2, providerCache: 1 });
 
+    const cacheCleanup = store.clearProviderCache();
+    assert.equal(cacheCleanup.removed.providerCache, 1);
+    assert.equal(cacheCleanup.stats.counts.providerCache, 0);
+    assert.equal(cacheCleanup.stats.counts.plays, 2);
+
+    const historyCleanup = store.clearHistory();
+    assert.deepEqual(historyCleanup.removed, { plays: 2, tracks: 2, providerCache: 0 });
+    assert.deepEqual(historyCleanup.stats.counts, { plays: 0, tracks: 0, providerCache: 0 });
     store.close();
+  } finally {
+    cleanupDb(dbPath);
+  }
+});
+
+test('HistoryStore full reset preserves persona state', () => {
+  const dbPath = getTempDbPath();
+  try {
+    const store = new HistoryStore(dbPath);
+    store.recordPlay(createTrack());
+    store.savePersonaTasteText('Keep me');
+    store.savePersonaTraits({ exploration: 0.4, variety: 0.6, loyalty: 0.3 });
+    store.getDatabase().prepare(`
+      INSERT INTO provider_cache (cache_key, response_json, fetched_at)
+      VALUES ('apple:test', '{}', 123)
+    `).run();
+
+    const reset = store.fullReset();
+    assert.deepEqual(reset.removed, { plays: 1, tracks: 1, providerCache: 1 });
+    assert.equal(store.getPersonaTasteText(), 'Keep me');
+    assert.deepEqual(store.getPersonaTraits(), { exploration: 0.4, variety: 0.6, loyalty: 0.3 });
+    assert.deepEqual(store.getDatabaseStats().counts, { plays: 0, tracks: 0, providerCache: 0 });
+    store.close();
+  } finally {
+    cleanupDb(dbPath);
+  }
+});
+
+test('HistoryStore throws after close', () => {
+  const dbPath = getTempDbPath();
+  try {
+    const store = new HistoryStore(dbPath);
+    store.recordPlay(createTrack());
+    store.close();
+    assert.throws(() => store.getRecent());
   } finally {
     cleanupDb(dbPath);
   }

@@ -8,7 +8,7 @@ sbotify is a Model Context Protocol (MCP) server that enables coding agents (Cla
 
 - **Agent-driven music control**: Taste-aware `discover -> play_song/add_song -> feedback` flow via MCP
 - **Apple-only discover pipeline**: flat, paginated Apple candidates with optional `artist` / `genres` seeds
-- **Browser dashboard**: Real-time now-playing info + volume slider on localhost:3737
+- **Browser dashboard**: Real-time now-playing info, volume slider, and manual database cleanup on the configured dashboard port
 - **Headless playback**: Audio plays independently via mpv (no browser needed)
 - **Cross-platform**: Works on Windows, macOS, Linux
 - **Zero-key resolver**: Apple Search API for canonical catalog lookup, yt-dlp for playback resolution
@@ -45,7 +45,7 @@ npm install -g sbotify
 
 ```bash
 sbotify
-# Listens on stdio for MCP (agent) + HTTP on localhost:3737 (browser)
+# Listens on stdio for MCP (agent) + HTTP on the configured dashboard port (default: localhost:3737)
 ```
 
 ### MCP Configuration (Claude Code)
@@ -79,11 +79,25 @@ Current `discover` contract:
 
 ### Browser Dashboard
 
-Open http://localhost:3737 in your browser to see:
+Open the configured dashboard URL (default `http://localhost:3737`) in your browser to see:
 - Now-playing track (title, artist, progress)
 - Volume slider
 - Live queue preview
 - Persona editor + manual stored listening traits
+- Database stats + manual cleanup actions
+
+### Runtime Config
+
+On first run, sbotify creates `${SBOTIFY_DATA_DIR || ~/.sbotify}/config.json`:
+
+```json
+{
+  "dashboardPort": 3737,
+  "daemonPort": 3747
+}
+```
+
+Both ports are exact. If either port is already in use, startup fails instead of falling back to another port.
 
 ## Architecture Overview
 
@@ -103,7 +117,7 @@ Coding Agent (Claude Code/Cursor)
     │ JSON IPC pipes/sockets       │ HTTP + WebSocket
     ▼                              ▼
    mpv (headless)            Browser Dashboard
-   (audio playback)          (localhost:3737)
+   (audio playback)          (configured dashboard port)
 ```
 
 ## Key Design Principles

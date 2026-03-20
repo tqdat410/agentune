@@ -1,20 +1,19 @@
-// HTTP server for daemon IPC — binds to 127.0.0.1:3747
+// HTTP server for daemon IPC — binds to the configured daemon port.
 // Routes: GET /health, POST /shutdown, /mcp (POST/GET/DELETE)
 
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'http';
 import { handleHealthRequest } from './health-endpoint.js';
 import { createHttpMcpHandler } from '../mcp/mcp-server.js';
 
-const DAEMON_PORT = 3747;
-
 const IDLE_GRACE_PERIOD = 5_000; // 5s before shutdown after last session closes
 
 export class DaemonServer {
   private server: Server | null = null;
   private mcpHandler: ReturnType<typeof createHttpMcpHandler> | null = null;
-  private port = DAEMON_PORT;
   private shutdownFn: ((reason: string) => void) | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(private readonly port: number) {}
 
   setShutdownHandler(fn: (reason: string) => void): void {
     this.shutdownFn = fn;

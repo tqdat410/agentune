@@ -4,14 +4,14 @@ import { stat } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { MpvController } from '../audio/mpv-controller.js';
+import { getHistoryStore, type HistoryStore } from '../history/history-store.js';
+import { getQueuePlaybackController } from '../queue/queue-playback-controller.js';
 import type { QueueManager } from '../queue/queue-manager.js';
-import { StateBroadcaster } from './state-broadcaster.js';
-import { getTasteEngine } from '../taste/taste-engine.js';
-import type { PersonaTraits } from '../taste/taste-engine.js';
+import { loadRuntimeConfig } from '../runtime/runtime-config.js';
+import { getTasteEngine, type PersonaTraits } from '../taste/taste-engine.js';
 import { invalidateDiscoverCache } from '../taste/discover-pagination-cache.js';
+import { StateBroadcaster } from './state-broadcaster.js';
 import {
-  DEFAULT_PORT,
-  MAX_PORT_ATTEMPTS,
   getMimeType,
   getStaticFilePath,
   openUrl,
@@ -19,8 +19,14 @@ import {
   readVolumeRequest,
   sendJson,
 } from './web-server-helpers.js';
+import { getDatabaseStatsPayload, runDatabaseAction } from './web-server-database-cleanup.js';
 
 const PUBLIC_DIR = fileURLToPath(new URL('../../public', import.meta.url));
+
+export interface WebServerOptions {
+  historyStore?: HistoryStore;
+  port?: number;
+}
 
 export class WebServer {
   private readonly broadcaster: StateBroadcaster;
@@ -32,18 +38,21 @@ export class WebServer {
         sendJson(response, { message: 'Internal server error' }, 500);
         return;
       }
-
       response.end();
     });
   });
+  private readonly historyStore: HistoryStore | null;
+  private readonly port: number;
   private readonly wsServer = new WebSocketServer({ noServer: true });
   private dashboardOpened = false;
-  private port = DEFAULT_PORT;
 
   constructor(
     private readonly mpv: MpvController,
     queueManager: QueueManager,
+    options?: WebServerOptions,
   ) {
+    this.historyStore = options?.historyStore ?? getHistoryStore();
+    this.port = options?.port ?? loadRuntimeConfig().dashboardPort;
     this.broadcaster = new StateBroadcaster(mpv, queueManager);
     this.readyPromise = this.start();
 
@@ -91,11 +100,11 @@ export class WebServer {
   async destroy(): Promise<void> {
     this.broadcaster.destroy();
     this.wsServer.close();
-    await new Promise<void>((resolve) => {
-      this.httpServer.close(() => {
-        resolve();
+    if (this.httpServer.listening) {
+      await new Promise<void>((resolve) => {
+        this.httpServer.close(() => resolve());
       });
-    });
+    }
     if (webServer === this) {
       webServer = null;
     }
@@ -105,38 +114,43 @@ export class WebServer {
     return `http://127.0.0.1:${this.port}`;
   }
 
-  private async start(): Promise<void> {
-    for (let offset = 0; offset < MAX_PORT_ATTEMPTS; offset += 1) {
-      const port = DEFAULT_PORT + offset;
+  async broadcastStateSnapshot(): Promise<void> {
+    await this.broadcaster.refresh();
+    this.broadcastState();
+  }
 
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const onError = (error: NodeJS.ErrnoException) => {
-            this.httpServer.off('listening', onListening);
-            reject(error);
-          };
-          const onListening = () => {
-            this.httpServer.off('error', onError);
-            resolve();
-          };
-
-          this.httpServer.once('error', onError);
-          this.httpServer.once('listening', onListening);
-          this.httpServer.listen(port, '127.0.0.1');
-        });
-
-        this.port = port;
-        console.error('[web-server] Listening', { port: this.port });
-        await this.broadcaster.refresh();
-        return;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EADDRINUSE') {
-          throw error;
-        }
+  broadcastPersona(): void {
+    const taste = getTasteEngine();
+    if (!taste) return;
+    const payload = JSON.stringify({
+      type: 'persona',
+      data: taste.getPersona(),
+    });
+    for (const client of this.wsServer.clients) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(payload);
       }
     }
+  }
 
-    throw new Error(`No available port found between ${DEFAULT_PORT}-${DEFAULT_PORT + MAX_PORT_ATTEMPTS - 1}`);
+  private async start(): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      const onError = (error: NodeJS.ErrnoException) => {
+        this.httpServer.off('listening', onListening);
+        reject(error);
+      };
+      const onListening = () => {
+        this.httpServer.off('error', onError);
+        resolve();
+      };
+
+      this.httpServer.once('error', onError);
+      this.httpServer.once('listening', onListening);
+      this.httpServer.listen(this.port, '127.0.0.1');
+    });
+
+    console.error('[web-server] Listening', { port: this.port });
+    await this.broadcaster.refresh();
   }
 
   private async handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -149,45 +163,16 @@ export class WebServer {
 
     if (request.method === 'GET' && url.pathname === '/api/persona') {
       const taste = getTasteEngine();
-      if (!taste) { sendJson(response, { message: 'Unavailable' }, 503); return; }
+      if (!taste) {
+        sendJson(response, { message: 'Unavailable' }, 503);
+        return;
+      }
       sendJson(response, taste.getPersona());
       return;
     }
 
     if (request.method === 'POST' && url.pathname === '/api/persona') {
-      const body = await readJsonBody(request);
-      const hasTaste = hasOwn(body, 'taste');
-      const hasTraits = hasOwn(body, 'traits');
-
-      if (!hasTaste && !hasTraits) {
-        sendJson(response, { message: 'taste and/or traits field required' }, 400);
-        return;
-      }
-
-      if (hasTaste && typeof body?.taste !== 'string') {
-        sendJson(response, { message: 'taste must be a string' }, 400);
-        return;
-      }
-
-      const nextTraits = hasTraits ? parsePersonaTraitsPayload(body?.traits) : null;
-      if (hasTraits && !nextTraits) {
-        sendJson(response, { message: 'traits must include exploration, variety, and loyalty numbers between 0 and 1' }, 400);
-        return;
-      }
-
-      const taste = getTasteEngine();
-      if (!taste) { sendJson(response, { message: 'Unavailable' }, 503); return; }
-
-      if (hasTaste) {
-        taste.saveTasteText((body?.taste as string).slice(0, 1000));
-      }
-      if (nextTraits) {
-        taste.saveTraits(nextTraits);
-        invalidateDiscoverCache();
-      }
-
-      sendJson(response, { updated: true, ...taste.getPersona() });
-      this.broadcastPersona();
+      await this.handlePersonaUpdate(request, response);
       return;
     }
 
@@ -203,6 +188,21 @@ export class WebServer {
       }
 
       sendJson(response, { volume: this.mpv.setVolume(parsed.volume) });
+      return;
+    }
+
+    if (url.pathname === '/api/database/stats' && request.method === 'GET') {
+      const store = this.historyStore;
+      if (!store) {
+        sendJson(response, { message: 'Unavailable' }, 503);
+        return;
+      }
+      sendJson(response, getDatabaseStatsPayload(store));
+      return;
+    }
+
+    if (request.method === 'POST' && isDatabaseActionPath(url.pathname)) {
+      await this.handleDatabaseAction(url.pathname, response);
       return;
     }
 
@@ -230,6 +230,57 @@ export class WebServer {
     createReadStream(filePath).pipe(response);
   }
 
+  private async handlePersonaUpdate(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const body = await readJsonBody(request);
+    const hasTaste = hasOwn(body, 'taste');
+    const hasTraits = hasOwn(body, 'traits');
+
+    if (!hasTaste && !hasTraits) {
+      sendJson(response, { message: 'taste and/or traits field required' }, 400);
+      return;
+    }
+    if (hasTaste && typeof body?.taste !== 'string') {
+      sendJson(response, { message: 'taste must be a string' }, 400);
+      return;
+    }
+
+    const nextTraits = hasTraits ? parsePersonaTraitsPayload(body?.traits) : null;
+    if (hasTraits && !nextTraits) {
+      sendJson(response, { message: 'traits must include exploration, variety, and loyalty numbers between 0 and 1' }, 400);
+      return;
+    }
+
+    const taste = getTasteEngine();
+    if (!taste) {
+      sendJson(response, { message: 'Unavailable' }, 503);
+      return;
+    }
+
+    if (hasTaste) {
+      taste.saveTasteText((body?.taste as string).slice(0, 1000));
+    }
+    if (nextTraits) {
+      taste.saveTraits(nextTraits);
+      invalidateDiscoverCache();
+    }
+
+    sendJson(response, { updated: true, ...taste.getPersona() });
+    this.broadcastPersona();
+  }
+
+  private async handleDatabaseAction(pathname: string, response: ServerResponse): Promise<void> {
+    const store = this.historyStore;
+    if (!store) {
+      sendJson(response, { message: 'Unavailable' }, 503);
+      return;
+    }
+
+    const action = pathname.replace('/api/database/', '') as 'clear-history' | 'clear-provider-cache' | 'full-reset';
+    const payload = await runDatabaseAction(action, store, getQueuePlaybackController());
+    await this.broadcastStateSnapshot();
+    sendJson(response, payload);
+  }
+
   private handleSocketMessage(rawMessage: string): void {
     try {
       const message = JSON.parse(rawMessage) as { type?: string; level?: number; taste?: string };
@@ -252,20 +303,6 @@ export class WebServer {
       }
     } catch (error) {
       console.error('[web-server] Ignored invalid message', { error: (error as Error).message });
-    }
-  }
-
-  broadcastPersona(): void {
-    const taste = getTasteEngine();
-    if (!taste) return;
-    const payload = JSON.stringify({
-      type: 'persona',
-      data: taste.getPersona(),
-    });
-    for (const client of this.wsServer.clients) {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(payload);
-      }
     }
   }
 
@@ -296,6 +333,12 @@ function hasOwn(value: unknown, key: string): boolean {
   return !!value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, key);
 }
 
+function isDatabaseActionPath(pathname: string): pathname is '/api/database/clear-history' | '/api/database/clear-provider-cache' | '/api/database/full-reset' {
+  return pathname === '/api/database/clear-history'
+    || pathname === '/api/database/clear-provider-cache'
+    || pathname === '/api/database/full-reset';
+}
+
 function parsePersonaTraitsPayload(value: unknown): PersonaTraits | null {
   if (!value || typeof value !== 'object') {
     return null;
@@ -323,11 +366,19 @@ function isTraitNumber(value: unknown): value is number {
 
 let webServer: WebServer | null = null;
 
-export function createWebServer(mpv: MpvController, queueManager: QueueManager): WebServer {
+export function createWebServer(
+  mpv: MpvController,
+  queueManager: QueueManager,
+  options?: WebServerOptions,
+): WebServer {
   if (!webServer) {
-    webServer = new WebServer(mpv, queueManager);
-    void webServer.waitUntilReady().catch((error: Error) => {
-      console.error('[web-server] Failed to start', { error: error.message });
+    const server = new WebServer(mpv, queueManager, options);
+    webServer = server;
+    void server.waitUntilReady().catch(() => {
+      void server.destroy();
+      if (webServer === server) {
+        webServer = null;
+      }
     });
   }
 

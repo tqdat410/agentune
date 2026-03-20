@@ -13,10 +13,11 @@ import { createAppleSearchProvider } from './providers/apple-search-provider.js'
 import { createTasteEngine } from './taste/taste-engine.js';
 import { DaemonServer } from './daemon/daemon-server.js';
 import { writePidFile, removePidFile } from './daemon/pid-manager.js';
+import { loadRuntimeConfig } from './runtime/runtime-config.js';
 
 // --- Shared bootstrap ---
 
-function bootstrapComponents() {
+async function bootstrapComponents() {
   // Initialize history store (SQLite) — non-fatal if it fails
   try {
     createHistoryStore();
@@ -41,7 +42,9 @@ function bootstrapComponents() {
 
   const mpv = createMpvController();
   createQueuePlaybackController(mpv, queueManager, youtubeProvider);
-  createWebServer(mpv, queueManager);
+  const runtimeConfig = loadRuntimeConfig();
+  const webServer = createWebServer(mpv, queueManager, { port: runtimeConfig.dashboardPort });
+  await webServer.waitUntilReady();
 
   try {
     mpv.init();
@@ -57,9 +60,10 @@ function bootstrapComponents() {
 
 async function startDaemon() {
   console.error('[sbotify] Starting in daemon mode...');
-  bootstrapComponents();
+  await bootstrapComponents();
+  const runtimeConfig = loadRuntimeConfig();
 
-  const daemonServer = new DaemonServer();
+  const daemonServer = new DaemonServer(runtimeConfig.daemonPort);
 
   async function daemonShutdown(reason: string) {
     console.error(`[sbotify] Daemon shutting down (${reason})...`);

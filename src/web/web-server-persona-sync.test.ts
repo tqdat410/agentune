@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'events';
 import fs from 'fs';
+import { createServer } from 'http';
 import os from 'os';
 import path from 'path';
 import test from 'node:test';
@@ -51,6 +52,28 @@ function cleanupDb(dbPath: string): void {
   }
 }
 
+async function getAvailablePort(): Promise<number> {
+  return await new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        server.close(() => reject(new Error('Failed to allocate port.')));
+        return;
+      }
+      const { port } = address;
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(port);
+      });
+    });
+  });
+}
+
 async function waitForBufferedMessage(
   messages: Array<{ type?: string; data?: { taste?: string; traits?: { exploration?: number; variety?: number; loyalty?: number } } }>,
   predicate: (payload: { type?: string; data?: { taste?: string; traits?: { exploration?: number; variety?: number; loyalty?: number } } }) => boolean,
@@ -83,7 +106,10 @@ test('WebServer syncs dashboard persona API and MCP manual trait updates', async
   tasteEngine.saveTasteText('Initial taste');
   tasteEngine.saveTraits({ exploration: 0.25, variety: 0.5, loyalty: 0.75 });
 
-  const webServer = createWebServer(new FakeMpv() as never, new QueueManager());
+  const webServer = createWebServer(new FakeMpv() as never, new QueueManager(), {
+    historyStore: store,
+    port: await getAvailablePort(),
+  });
   await webServer.waitUntilReady();
 
   const socket = new WebSocket(`${webServer.getDashboardUrl().replace('http', 'ws')}/ws`);

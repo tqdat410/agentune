@@ -18,10 +18,24 @@ const elements = {
   traitVarietyVal: document.querySelector('[data-trait-variety-val]'),
   traitLoyaltyInput: document.querySelector('[data-trait-loyalty-input]'),
   traitLoyaltyVal: document.querySelector('[data-trait-loyalty-val]'),
+  databasePath: document.querySelector('[data-db-path]'),
+  databasePlays: document.querySelector('[data-db-plays]'),
+  databaseTracks: document.querySelector('[data-db-tracks]'),
+  databaseProviderCache: document.querySelector('[data-db-provider-cache]'),
+  databaseMessage: document.querySelector('[data-database-message]'),
+  databaseActions: Array.from(document.querySelectorAll('[data-db-action]')),
 };
 
 let socket;
 let traitsDirty = false;
+let armedDatabaseAction = null;
+let databaseArmTimer = null;
+
+const DATABASE_ACTION_LABELS = {
+  'clear-history': 'Clear history',
+  'clear-provider-cache': 'Clear provider cache',
+  'full-reset': 'Full reset',
+};
 
 function formatTime(totalSeconds) {
   const minutes = Math.floor(totalSeconds / 60);
@@ -51,6 +65,13 @@ function renderState(state) {
   elements.mute.textContent = state.muted ? 'Unmute' : 'Mute';
   elements.art.src = state.thumbnail || 'https://placehold.co/640x640/10131a/e6ecff?text=Sbotify';
   renderQueue(state.queue);
+}
+
+function renderDatabaseStats(stats) {
+  elements.databasePath.textContent = stats.dbPath;
+  elements.databasePlays.textContent = String(stats.counts.plays);
+  elements.databaseTracks.textContent = String(stats.counts.tracks);
+  elements.databaseProviderCache.textContent = String(stats.counts.providerCache);
 }
 
 function connect() {
@@ -107,6 +128,68 @@ function renderTrait(name, value) {
   if (label) label.textContent = val.toFixed(2);
 }
 
+function showDatabaseMessage(message, isError = false) {
+  elements.databaseMessage.textContent = message;
+  elements.databaseMessage.classList.toggle('is-error', isError);
+}
+
+function resetDatabaseActionArming() {
+  armedDatabaseAction = null;
+  if (databaseArmTimer) {
+    window.clearTimeout(databaseArmTimer);
+    databaseArmTimer = null;
+  }
+  for (const button of elements.databaseActions) {
+    button.classList.remove('is-armed');
+    button.textContent = DATABASE_ACTION_LABELS[button.dataset.dbAction];
+  }
+}
+
+function armDatabaseAction(button, action) {
+  resetDatabaseActionArming();
+  armedDatabaseAction = action;
+  button.classList.add('is-armed');
+  button.textContent = `Confirm ${DATABASE_ACTION_LABELS[action]}`;
+  showDatabaseMessage('Click the same button again within 5 seconds to confirm.');
+  databaseArmTimer = window.setTimeout(() => {
+    resetDatabaseActionArming();
+    showDatabaseMessage('Cleanup confirmation expired.');
+  }, 5000);
+}
+
+async function loadDatabaseStats() {
+  try {
+    const response = await fetch('/api/database/stats');
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.message ?? 'Failed to load database stats.');
+    }
+    renderDatabaseStats(data.stats);
+  } catch (err) {
+    showDatabaseMessage(err.message ?? 'Failed to load database stats.', true);
+  }
+}
+
+async function runDatabaseAction(action, button) {
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/database/${action}`, { method: 'POST' });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.message ?? 'Database cleanup failed.');
+    }
+
+    renderDatabaseStats(data.stats);
+    showDatabaseMessage(data.message ?? 'Cleanup complete.');
+    resetDatabaseActionArming();
+  } catch (err) {
+    showDatabaseMessage(err.message ?? 'Database cleanup failed.', true);
+  } finally {
+    button.disabled = false;
+    await loadDatabaseStats();
+  }
+}
+
 function getTraitPayload() {
   return {
     exploration: Number(elements.traitExplorationInput.value),
@@ -160,6 +243,20 @@ elements.saveTaste.addEventListener('click', () => {
     });
 });
 
+for (const button of elements.databaseActions) {
+  button.addEventListener('click', async () => {
+    const action = button.dataset.dbAction;
+    if (!action) {
+      return;
+    }
+    if (armedDatabaseAction !== action) {
+      armDatabaseAction(button, action);
+      return;
+    }
+    await runDatabaseAction(action, button);
+  });
+}
+
 fetch('/api/status')
   .then((response) => response.json())
   .then((state) => renderState(state))
@@ -171,6 +268,8 @@ fetch('/api/persona')
   .then((response) => response.json())
   .then((data) => renderPersona(data))
   .catch(() => {});
+
+void loadDatabaseStats();
 
 connect();
 

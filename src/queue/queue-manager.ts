@@ -55,6 +55,15 @@ export class QueueManager extends EventEmitter {
     this.emitStateChange();
   }
 
+  reset(): void {
+    this.state = {
+      nowPlaying: null,
+      queue: [],
+      history: [],
+    };
+    this.emitStateChange();
+  }
+
   getNowPlaying(): QueueItem | null {
     return this.state.nowPlaying;
   }

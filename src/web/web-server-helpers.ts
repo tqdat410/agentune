@@ -2,9 +2,6 @@ import { exec } from 'child_process';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { extname, join } from 'path';
 
-export const DEFAULT_PORT = 3737;
-export const MAX_PORT_ATTEMPTS = 10;
-
 const MIME_TYPES: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
   '.html': 'text/html; charset=utf-8',

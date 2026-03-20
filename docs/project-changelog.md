@@ -1,5 +1,68 @@
 # Project Changelog
 
+## 2026-03-20 (Runtime Config + DB Cleanup)
+
+### Exact Port Config + Shared Data Dir
+- Added shared runtime path/config modules:
+  - `src/runtime/runtime-data-paths.ts`
+  - `src/runtime/runtime-config.ts`
+- `config.json` is now created automatically in `${SBOTIFY_DATA_DIR || ~/.sbotify}/config.json`
+- Runtime config currently supports:
+  - `dashboardPort`
+  - `daemonPort`
+- Updated daemon, proxy, PID, log, DB, and web startup paths to read from the shared data-dir/config layer
+- Removed dashboard port fallback behavior; dashboard and daemon now bind exact configured ports and fail fast if occupied
+- Added `src/runtime/runtime-config.test.ts` to lock default-file creation and config validation
+
+### SQLite Schema Cleanup + Maintenance
+- Refactored `src/history/history-schema.ts` to the trimmed active schema:
+  - kept `tracks`, `plays`, `session_state`, `provider_cache`
+  - removed legacy `preferences`
+  - removed legacy `tracks.similar_json`
+  - removed legacy `plays.lane_id`
+  - removed legacy session-state JSON columns
+- Added migration layer in:
+  - `src/history/history-store-migrations.ts`
+  - `src/history/history-store-maintenance.ts`
+- History store now migrates older DBs to schema version 2 and adds current indexes for:
+  - `plays(track_id, started_at DESC)`
+  - `tracks(play_count DESC) WHERE play_count > 0`
+  - `provider_cache(fetched_at)`
+- Added history-store cleanup operations:
+  - `clearHistory()`
+  - `clearProviderCache()`
+  - `fullReset()`
+- Cleanup now runs `wal_checkpoint(TRUNCATE)`, `VACUUM`, and `PRAGMA optimize`
+
+### Dashboard Database Controls
+- Added dashboard database routes in `src/web/web-server.ts`:
+  - `GET /api/database/stats`
+  - `POST /api/database/clear-history`
+  - `POST /api/database/clear-provider-cache`
+  - `POST /api/database/full-reset`
+- Added cleanup helper module `src/web/web-server-database-cleanup.ts`
+- Added database section to dashboard UI in:
+  - `public/index.html`
+  - `public/app.js`
+  - `public/style.css`
+- Cleanup actions now:
+  - require 2-step confirm in the dashboard
+  - stop active playback
+  - clear runtime queue state
+  - invalidate discover cache
+  - keep persona taste/traits intact
+
+### Tests + Validation
+- Rewrote history-store tests around the trimmed API in:
+  - `src/history/history-store.test.ts`
+  - `src/history/history-store-state-redesign.test.ts`
+- Added web cleanup coverage in:
+  - `src/web/web-server-database-cleanup.test.ts`
+- Updated `src/web/web-server-persona-sync.test.ts` for exact-port server startup
+- Validation:
+  - `npm run build`: passed
+  - `npm test`: 85 passed, 0 failed
+
 ## 2026-03-19 (Hard Manual Persona Traits)
 
 ### Manual Persona Traits Are Now the Source of Truth

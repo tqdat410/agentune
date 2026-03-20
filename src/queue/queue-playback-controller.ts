@@ -98,6 +98,19 @@ export class QueuePlaybackController {
     return await this.playNextQueuedTrack();
   }
 
+  async stopAndResetRuntimeState(): Promise<void> {
+    this.prefetchedAudio = null;
+    this.prefetchInProgress = null;
+    await this.recordInterruptedPlay();
+
+    if (this.mpv.isReady() && this.mpv.getCurrentTrack()) {
+      this.suppressStoppedHandler = true;
+      this.mpv.stop();
+    }
+
+    this.queueManager.reset();
+  }
+
   listQueue(): QueueItem[] {
     return this.queueManager.list();
   }

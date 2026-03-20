@@ -15,11 +15,11 @@ function cleanupDb(dbPath: string): void {
   const dir = path.dirname(dbPath);
   try {
     if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
-    if (fs.existsSync(dbPath + '-wal')) fs.unlinkSync(dbPath + '-wal');
-    if (fs.existsSync(dbPath + '-shm')) fs.unlinkSync(dbPath + '-shm');
+    if (fs.existsSync(`${dbPath}-wal`)) fs.unlinkSync(`${dbPath}-wal`);
+    if (fs.existsSync(`${dbPath}-shm`)) fs.unlinkSync(`${dbPath}-shm`);
     if (fs.existsSync(dir)) fs.rmdirSync(dir);
   } catch {
-    // ignore cleanup errors in tests
+    // Ignore cleanup errors in tests.
   }
 }
 
@@ -54,7 +54,7 @@ test('HistoryStore.getTopArtists counts real plays instead of multiplying track 
     assert.equal(topArtists[0]?.plays, 3);
     assert.equal(topArtists[1]?.artist, 'Artist B');
     assert.equal(topArtists[1]?.plays, 1);
-    assert.ok(topArtists[0]?.avgCompletion > topArtists[1]?.avgCompletion);
+    assert.ok((topArtists[0]?.avgCompletion ?? 0) > (topArtists[1]?.avgCompletion ?? 0));
     store.close();
   } finally {
     cleanupDb(dbPath);
@@ -98,47 +98,81 @@ test('HistoryStore exposes detailed recent plays, tag stats, and manual persona 
   }
 });
 
-test('HistoryStore migrates existing session_state tables to include manual persona columns', () => {
+test('HistoryStore migrates legacy schema to v2 and drops unused columns', () => {
   const dbPath = getTempDbPath();
   try {
-    const dir = path.dirname(dbPath);
-    fs.mkdirSync(dir, { recursive: true });
-
     const legacyDb = new Database(dbPath);
     legacyDb.exec(`
+      CREATE TABLE tracks (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        artist TEXT NOT NULL,
+        duration_sec INTEGER DEFAULT 0,
+        thumbnail TEXT DEFAULT '',
+        tags_json TEXT DEFAULT '[]',
+        similar_json TEXT DEFAULT '[]',
+        yt_video_id TEXT DEFAULT '',
+        first_played_at INTEGER NOT NULL,
+        play_count INTEGER DEFAULT 0
+      );
+      CREATE TABLE plays (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        track_id TEXT NOT NULL REFERENCES tracks(id),
+        started_at INTEGER NOT NULL,
+        played_sec INTEGER DEFAULT 0,
+        skipped INTEGER DEFAULT 0,
+        context_json TEXT DEFAULT '{}',
+        lane_id TEXT DEFAULT ''
+      );
+      CREATE TABLE preferences (
+        key TEXT PRIMARY KEY,
+        weight REAL DEFAULT 0,
+        boredom REAL DEFAULT 0,
+        last_seen_at INTEGER DEFAULT 0
+      );
       CREATE TABLE session_state (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         lane_json TEXT DEFAULT '{}',
         taste_state_json TEXT DEFAULT '{}',
         agent_persona_json TEXT DEFAULT '{}',
-        current_intent_json TEXT DEFAULT '{}'
+        current_intent_json TEXT DEFAULT '{}',
+        persona_taste_text TEXT DEFAULT '',
+        persona_traits_json TEXT DEFAULT '{"exploration":0.2,"variety":0.9,"loyalty":0.4}'
       );
-      INSERT INTO session_state (id, lane_json, taste_state_json, agent_persona_json, current_intent_json)
-      VALUES (1, '{}', '{}', '{}', '{}');
+      CREATE TABLE provider_cache (
+        cache_key TEXT PRIMARY KEY,
+        response_json TEXT NOT NULL,
+        fetched_at INTEGER NOT NULL
+      );
+      INSERT INTO tracks (id, title, artist, duration_sec, thumbnail, tags_json, similar_json, yt_video_id, first_played_at, play_count)
+      VALUES ('artist::track', 'Track', 'Artist', 200, 'thumb', '["focus"]', '["other"]', 'vid1', 123, 1);
+      INSERT INTO plays (track_id, started_at, played_sec, skipped, context_json, lane_id)
+      VALUES ('artist::track', 123, 150, 0, '{"source":"legacy"}', 'legacy-lane');
+      INSERT INTO session_state (id, lane_json, taste_state_json, agent_persona_json, current_intent_json, persona_taste_text, persona_traits_json)
+      VALUES (1, '{}', '{}', '{}', '{}', 'Migrated taste', '{"exploration":0.2,"variety":0.9,"loyalty":0.4}');
+      INSERT INTO provider_cache (cache_key, response_json, fetched_at)
+      VALUES ('apple:test', '{}', 100);
     `);
     legacyDb.close();
 
     const store = new HistoryStore(dbPath);
-    store.savePersonaTasteText('Migrated taste');
-    store.savePersonaTraits({ exploration: 0.2, variety: 0.9, loyalty: 0.4 });
+    const db = store.getDatabase();
+    const sessionColumns = db.prepare('PRAGMA table_info(session_state)').all() as Array<{ name: string }>;
+    const playColumns = db.prepare('PRAGMA table_info(plays)').all() as Array<{ name: string }>;
+    const trackColumns = db.prepare('PRAGMA table_info(tracks)').all() as Array<{ name: string }>;
+    const preferencesTable = db.prepare(`
+      SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'preferences'
+    `).get() as { name: string } | undefined;
+
+    assert.equal(db.pragma('user_version', { simple: true }), 2);
     assert.equal(store.getPersonaTasteText(), 'Migrated taste');
     assert.deepEqual(store.getPersonaTraits(), { exploration: 0.2, variety: 0.9, loyalty: 0.4 });
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('HistoryStore rejects invalid manual persona traits', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-
-    assert.throws(() => {
-      store.savePersonaTraits({ exploration: -0.1, variety: 0.5, loyalty: 0.5 });
-    });
-
-    assert.deepEqual(store.getPersonaTraits(), { exploration: 0.5, variety: 0.5, loyalty: 0.5 });
+    assert.ok(!sessionColumns.some((column) => column.name === 'lane_json'));
+    assert.ok(!playColumns.some((column) => column.name === 'lane_id'));
+    assert.ok(!trackColumns.some((column) => column.name === 'similar_json'));
+    assert.equal(preferencesTable, undefined);
+    assert.equal(store.getRecent(5).length, 1);
+    assert.equal(store.getDatabaseStats().counts.providerCache, 1);
     store.close();
   } finally {
     cleanupDb(dbPath);

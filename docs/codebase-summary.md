@@ -8,6 +8,7 @@
 - The daemon owns queue state, playback, listening history, and the browser dashboard.
 - `mpv` handles audio output.
 - SQLite stores tracks, play events, provider cache data, persisted persona taste text, and persisted manual persona traits.
+- Runtime ports live in `${SBOTIFY_DATA_DIR || ~/.sbotify}/config.json`.
 
 The active state redesign is agent-first:
 
@@ -75,8 +76,14 @@ sbotify/
 │   │   └── taste-engine.test.ts
 │   ├── types/
 │   │   └── node-mpv.d.ts
+│   ├── runtime/
+│   │   ├── runtime-config.test.ts
+│   │   ├── runtime-config.ts
+│   │   └── runtime-data-paths.ts
 │   └── web/
 │       ├── state-broadcaster.ts
+│       ├── web-server-database-cleanup.test.ts
+│       ├── web-server-database-cleanup.ts
 │       ├── web-server-helpers.ts
 │       └── web-server.ts
 ├── public/
@@ -103,7 +110,8 @@ Current responsibilities:
 - persist `tracks`, `plays`, `provider_cache`, and `session_state`
 - store free-text persona taste in `session_state.persona_taste_text`
 - store manual persona traits in `session_state.persona_traits_json`
-- keep older `lane_json`, `taste_state_json`, `agent_persona_json`, and `current_intent_json` columns for compatibility
+- migrate old databases to the trimmed schema without legacy session/preference columns
+- expose manual cleanup operations for history, provider cache, and full reset
 - expose aggregate queries used by the taste engine and discover pipeline:
   - `getRecentPlaysDetailed()`
   - `getTopArtists()`
@@ -114,8 +122,8 @@ Current responsibilities:
 Important details:
 
 - `normalizeTrackId(artist, title)` is the canonical track key.
-- The constructor performs runtime migrations to add `persona_taste_text` and `persona_traits_json` when an older database is opened.
-- `preferences` still exists in schema, but it is not the active persona model.
+- The constructor migrates older DBs to schema version 2 and removes `preferences`, `similar_json`, `lane_id`, and older session-state columns.
+- Cleanup actions run `wal_checkpoint(TRUNCATE)`, `VACUUM`, and `PRAGMA optimize`.
 
 ### Taste Engine
 
@@ -241,6 +249,10 @@ Current HTTP and WebSocket surface:
 - `GET /api/persona`
 - `POST /api/persona`
 - `POST /api/volume`
+- `GET /api/database/stats`
+- `POST /api/database/clear-history`
+- `POST /api/database/clear-provider-cache`
+- `POST /api/database/full-reset`
 - `WS /ws`
 
 Current behavior:
@@ -254,12 +266,16 @@ Current behavior:
   - volume and mute controls
   - persona textarea
   - editable manual trait sliders
+  - database stats
+  - cleanup buttons with 2-step confirm
 
 Important details:
 
+- Runtime config file now stores exact `dashboardPort` and `daemonPort`, with no fallback ports.
 - The old dashboard context badge is gone.
 - `POST /api/persona` accepts `taste`, `traits`, or both in one validated payload.
 - `public/app.js` loads initial playback and persona state with HTTP, then listens for live `state` and `persona` messages.
+- Database cleanup actions stop playback, clear runtime queue state, then mutate SQLite.
 
 ## Tests and Validation
 

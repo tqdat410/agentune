@@ -16,7 +16,7 @@ Agent / MCP Client
      -> queue + playback controller
      -> taste engine
      -> history store (SQLite)
-     -> web dashboard (:3737)
+     -> web dashboard (:dashboardPort from config)
      -> mpv
 ```
 
@@ -31,11 +31,13 @@ Agent / MCP Client
 ### Daemon Mode
 
 - `sbotify --daemon` starts the long-lived process.
+- Runtime config lives at `${SBOTIFY_DATA_DIR || ~/.sbotify}/config.json`.
 - The daemon exposes:
-  - `/mcp` on the daemon port for MCP traffic
+  - `/mcp` on the configured daemon port for MCP traffic
   - `/health` for readiness checks
   - `/shutdown` for graceful stop
-  - the dashboard on `http://127.0.0.1:3737` by default, with fallback through the next 9 ports if needed
+  - the dashboard on `http://127.0.0.1:{dashboardPort}` from config
+- Both ports are exact; no automatic fallback is used anymore.
 - One daemon means one shared queue, one shared history DB, and one shared `mpv` process.
 
 ## Core Components
@@ -49,21 +51,21 @@ Responsibilities:
 - Persist tracks and play events in SQLite
 - Persist free-text persona taste in `session_state.persona_taste_text`
 - Persist manual persona traits in `session_state.persona_traits_json`
+- Expose manual cleanup operations for history and provider cache
 - Expose aggregate history queries for the taste engine and MCP tools
-- Keep backward-compatible legacy session columns without using them in the new state model
 
 Tables:
 
 - `tracks`
 - `plays`
-- `preferences` (legacy, still present)
 - `session_state`
 - `provider_cache`
 
 Important notes:
 
 - `normalizeTrackId(artist, title)` is the canonical identity key.
-- The constructor now performs runtime migrations to add `persona_taste_text` and `persona_traits_json` when an older DB is opened.
+- The constructor now migrates older databases to schema version 2, dropping unused legacy columns/tables.
+- Cleanup actions run `wal_checkpoint(TRUNCATE)`, `VACUUM`, and `PRAGMA optimize`.
 
 ### Taste Engine
 
@@ -187,6 +189,10 @@ Endpoints:
 - `GET /api/persona`
 - `POST /api/persona`
 - `POST /api/volume`
+- `GET /api/database/stats`
+- `POST /api/database/clear-history`
+- `POST /api/database/clear-provider-cache`
+- `POST /api/database/full-reset`
 - `WS /ws`
 
 Dashboard features:
@@ -196,6 +202,8 @@ Dashboard features:
 - volume + mute controls
 - persona textarea
 - manual trait sliders
+- database stats
+- manual cleanup buttons for history, provider cache, and full reset
 
 Important notes:
 
@@ -203,6 +211,7 @@ Important notes:
 - `POST /api/persona` accepts `taste`, `traits`, or both in one validated request.
 - Persona changes are broadcast to connected clients over WebSocket.
 - Dashboard taste edits can arrive through WebSocket, but manual trait edits currently arrive through `POST /api/persona` or MCP `set_persona_traits()`.
+- Cleanup actions stop playback, clear runtime queue state, invalidate discover cache, then mutate SQLite.
 
 ## Main Flows
 
@@ -234,6 +243,14 @@ Important notes:
 2. On skip or finish, `updatePlay()` records `played_sec` and `skipped`.
 3. Future `get_session_state()` and `discover()` calls read from that raw history.
 
+### Manual Database Cleanup
+
+1. User opens the dashboard database section.
+2. User confirms `clear-history`, `clear-provider-cache`, or `full-reset`.
+3. The server stops playback and clears runtime queue state before touching SQLite.
+4. The history store performs the selected cleanup, keeps persona state intact, and runs DB maintenance.
+5. Updated state is pushed back to the dashboard.
+
 ## Build and Validation
 
 - `npm run build` cleans `dist/` before compiling so deleted test files do not leak into later runs.
@@ -249,4 +266,4 @@ Important notes:
 - Never write to stdout from server internals; MCP stdio must stay clean.
 - Keep queue state authoritative in one place.
 - Prefer raw data plus agent reasoning over server-side taste prediction.
-- Keep legacy DB columns only for compatibility, not as active state.
+- Keep runtime settings in `config.json`; keep user history/persona in SQLite.

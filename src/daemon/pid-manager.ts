@@ -1,9 +1,7 @@
-// PID file management for singleton daemon discovery
-// Tracks running daemon process: location ~/.sbotify/daemon.pid
+// PID file management for singleton daemon discovery.
 
-import { homedir } from 'os';
-import { join } from 'path';
-import { mkdirSync, writeFileSync, readFileSync, unlinkSync } from 'fs';
+import { writeFileSync, readFileSync, unlinkSync } from 'fs';
+import { getPidFilePath } from '../runtime/runtime-data-paths.js';
 
 export interface DaemonInfo {
   pid: number;
@@ -11,15 +9,8 @@ export interface DaemonInfo {
   started: string;
 }
 
-/** Returns path to the PID file */
-export function getPidFilePath(): string {
-  return join(homedir(), '.sbotify', 'daemon.pid');
-}
-
 /** Write current PID + port + ISO timestamp to PID file */
 export function writePidFile(port: number): void {
-  const dir = join(homedir(), '.sbotify');
-  mkdirSync(dir, { recursive: true });
   const info: DaemonInfo = {
     pid: process.pid,
     port,
