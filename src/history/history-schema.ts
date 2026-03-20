@@ -1,7 +1,6 @@
 // SQLite schema definitions and track ID normalization for play history.
 
-export const DEFAULT_PERSONA_TRAITS_JSON = '{"exploration":0.5,"variety":0.5,"loyalty":0.5}';
-export const HISTORY_SCHEMA_VERSION = 2;
+export const HISTORY_SCHEMA_VERSION = 3;
 
 /**
  * Normalize artist + title into a deterministic track ID.
@@ -41,8 +40,7 @@ CREATE TABLE IF NOT EXISTS plays (
 export const SESSION_STATE_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS session_state (
   id INTEGER PRIMARY KEY CHECK (id = 1),
-  persona_taste_text TEXT DEFAULT '',
-  persona_traits_json TEXT DEFAULT '${DEFAULT_PERSONA_TRAITS_JSON}'
+  persona_taste_text TEXT DEFAULT ''
 );
 `;
 

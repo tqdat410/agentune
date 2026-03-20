@@ -1,6 +1,6 @@
 import type { BatchTrackStats, HistoryStore } from '../history/history-store.js';
 import { normalizeTrackId } from '../history/history-schema.js';
-import type { PersonaTraits } from './taste-engine.js';
+import type { DiscoverRankingConfig } from '../runtime/runtime-config.js';
 import type { DiscoverCandidate } from './discover-batch-builder.js';
 
 export interface RankingContext {
@@ -32,7 +32,7 @@ export function buildRankingContext(
 
 export function rankCandidates(
   candidates: DiscoverCandidate[],
-  traits: PersonaTraits,
+  discoverRanking: DiscoverRankingConfig,
   store: Pick<HistoryStore, 'getTopArtists' | 'getTopTags' | 'getRecentPlaysDetailed' | 'batchGetTrackStats'>,
 ): DiscoverCandidate[] {
   const rankingContext = buildRankingContext(store);
@@ -41,11 +41,11 @@ export function rankCandidates(
   const scoredCandidates: ScoredCandidate[] = candidates.map((candidate, index) => ({
     candidate,
     index,
-    score: scoreCandidate(candidate, traits, rankingContext, trackStats),
+    score: scoreCandidate(candidate, discoverRanking, rankingContext, trackStats),
   }));
 
   scoredCandidates.sort((left, right) => right.score - left.score || left.index - right.index);
-  const varietyAdjustedCandidates = applyVarietyDiversityPass(scoredCandidates, traits.variety);
+  const varietyAdjustedCandidates = applyVarietyDiversityPass(scoredCandidates, discoverRanking.variety);
   return breakArtistClusters(varietyAdjustedCandidates.map((entry) => entry.candidate));
 }
 
@@ -59,7 +59,7 @@ function loadTrackStats(
 
 function scoreCandidate(
   candidate: DiscoverCandidate,
-  traits: PersonaTraits,
+  discoverRanking: DiscoverRankingConfig,
   rankingContext: RankingContext,
   trackStats: Map<string, BatchTrackStats>,
 ): number {
@@ -68,8 +68,8 @@ function scoreCandidate(
   const tagAffinity = computeTagAffinity(candidate.tags, rankingContext.topTags);
   const novelty = 1 - artistFamiliarity;
   const recentRepeatPenalty = computeRecentRepeatPenalty(stats.hoursSinceLastPlay);
-  const loyaltyMod = 0.5 + 0.5 * traits.loyalty;
-  const explorationMod = 0.5 + 0.5 * traits.exploration;
+  const loyaltyMod = 0.5 + 0.5 * discoverRanking.loyalty;
+  const explorationMod = 0.5 + 0.5 * discoverRanking.exploration;
 
   if (rankingContext.hasSparseHistory) {
     return clamp(

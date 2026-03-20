@@ -177,7 +177,7 @@ button {
   background: rgba(255, 255, 255, 0.04);
 }
 
-/* Config card — persona editor + traits */
+/* Config card — persona editor */
 .config-card {
   margin-top: 28px;
   padding: 22px;
@@ -197,12 +197,6 @@ button {
 .config-body label {
   font-weight: 600;
   font-size: 0.95rem;
-}
-
-.config-body label .subtle {
-  font-weight: 400;
-  color: #9ca9c8;
-  font-size: 0.82rem;
 }
 
 .config-help {
@@ -249,30 +243,6 @@ button {
 
 .persona-message.is-error {
   color: #ff9d9d;
-}
-
-.trait-row {
-  display: grid;
-  grid-template-columns: 100px 1fr 48px;
-  align-items: center;
-  gap: 12px;
-}
-
-.trait-label {
-  font-size: 0.88rem;
-  color: #aab6d5;
-}
-
-.trait-row input[type="range"] {
-  width: 100%;
-  accent-color: #1db954;
-}
-
-.trait-val {
-  font-size: 0.85rem;
-  color: #aab6d5;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 
 .danger-card {
@@ -358,14 +328,6 @@ button {
   .hero-card,
   .queue-card {
     border-radius: 24px;
-  }
-
-  .trait-row {
-    grid-template-columns: 1fr;
-  }
-
-  .trait-val {
-    text-align: left;
   }
 
   .danger-grid {

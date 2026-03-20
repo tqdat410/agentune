@@ -19,7 +19,6 @@ import {
   handleHistory,
   handleGetSessionState,
   handleUpdatePersona,
-  handleSetPersonaTraits,
 } from "./tool-handlers.js";
 
 /** Register all MCP tools onto a server instance */
@@ -50,20 +49,23 @@ export function registerMcpTools(server: McpServer): void {
 
   server.tool(
     "discover",
-    "Get song suggestions. Apple-powered discovery with persona-aware ranking. " +
-    "Optionally filter by artist or genres. Paginated — call with page=2 for more. " +
-    "Pick from candidates and use add_song() to queue or play_song() to replace current track.",
+    "Get song suggestions from the current listener state. " +
+    "Start with page=1 for a new search. Prefer a specific artist when the user names one. " +
+    "Use short, concrete keywords instead of long natural-language prompts. " +
+    "When the response includes nextGuide telling you to change page, keep the same input and increment page. " +
+    "When nextGuide tells you to improve input, change artist or keywords. " +
+    "Deprecated mode and intent inputs are ignored.",
     {
       page: z.number().int().min(1).optional().default(1)
-        .describe("Page number (default 1)"),
+        .describe("Page number for the current discover snapshot. Use page=1 for a new search."),
       limit: z.number().int().min(1).max(50).optional().default(10)
         .describe("Results per page (default 10, max 50)"),
       artist: z.string().max(200).optional()
-        .describe("Seed artist for discovery"),
-      genres: z.array(z.string().max(100)).max(10).optional()
-        .describe("Seed genres for discovery (max 10)"),
-      mode: z.string().optional().describe("Deprecated — ignored"),
-      intent: z.unknown().optional().describe("Deprecated — ignored"),
+        .describe("Best seed when the user names a specific artist."),
+      keywords: z.array(z.string().max(100)).max(10).optional()
+        .describe("Short seed keywords for style, genre, mood, or language hints (max 10)."),
+      mode: z.string().optional().describe("Deprecated — ignored."),
+      intent: z.unknown().optional().describe("Deprecated — ignored."),
     },
     async (args) => handleDiscover(args),
   );
@@ -107,11 +109,11 @@ export function registerMcpTools(server: McpServer): void {
 
   server.tool(
     "get_session_state",
-    "Read current context, persona, and listening history. " +
-    "Returns: time context (hour/period/day), persona (3 manual traits + taste text), " +
-    "and history (recent plays + top artists/tags stats). " +
-    "Use this to understand the listener's taste before calling discover(). " +
-    "Update persona taste text via update_persona() and manual trait controls via set_persona_traits().",
+    "Read the current listener state before choosing music. " +
+    "Use this as the source of truth for agent decisions. " +
+    "Returns time context, persona.Preferences, recent plays, top artists, and top keywords. " +
+    "Read these fields first, then choose a specific artist or concrete keywords for discover(). " +
+    "Do not infer hidden preferences beyond the returned state.",
     {},
     async () => handleGetSessionState(),
   );
@@ -121,25 +123,13 @@ export function registerMcpTools(server: McpServer): void {
     "Update the listener's music taste description only. Call this when the user explicitly mentions " +
     "a music preference, or when you want to record taste insights learned from listening patterns. " +
     "The taste text is free-form natural language describing what genres, artists, moods, and " +
-    "styles the listener prefers. This persists across sessions and does not change persona traits.",
+    "styles the listener prefers. This persists across sessions.",
     {
       taste: z.string().max(1000).describe(
         "Free text taste description, e.g. 'Likes ambient, piano, post-rock. Evenings prefer acoustic.'. Use an empty string to clear it."
       ),
     },
     async (args) => handleUpdatePersona(args),
-  );
-
-  server.tool(
-    "set_persona_traits",
-    "Set the listener's manual persona traits. These stored values are the source of truth for session state " +
-    "and lightly steer discover ranking until changed again.",
-    {
-      exploration: z.number().min(0).max(1).describe("How strongly discovery should favor unfamiliar artists (0-1)."),
-      variety: z.number().min(0).max(1).describe("How strongly discovery should avoid nearby repeated artists/tags (0-1)."),
-      loyalty: z.number().min(0).max(1).describe("How strongly discovery should favor familiar artists and proven tracks (0-1)."),
-    },
-    async (args) => handleSetPersonaTraits(args),
   );
 }
 

@@ -1,5 +1,63 @@
 # Project Changelog
 
+## 2026-03-20 (Agent-Facing Discover Guidance Cleanup)
+
+### MCP Contract Cleanup
+- Tightened the agent-facing state/discover surface to reduce ambiguous field names and follow-up hallucination:
+  - `src/taste/taste-engine.ts`
+  - `src/mcp/mcp-server.ts`
+  - `src/mcp/tool-handlers.ts`
+  - `src/taste/discover-batch-builder.ts`
+  - `src/taste/discover-pagination-cache.ts`
+  - `src/taste/discover-pipeline.ts`
+- `get_session_state()` now returns:
+  - `persona: { Preferences }`
+  - `history.stats.topKeywords`
+- `discover()` now accepts `keywords` instead of `genres`
+- public discover candidates now return `keywords` instead of `tags`
+- `discover()` now always returns `nextGuide` so the agent knows whether to:
+  - keep the same search and change page
+  - or improve `artist` / `keywords`
+- Removed the old discover success `tip` field from MCP output
+
+### Tests + Docs
+- Updated discover pipeline tests and persona sync cache tests to the new `keywords` contract
+- Synced README, codebase summary, system architecture, and roadmap to the new agent-facing field names
+- Validation:
+  - `npm run build`: passed
+  - `npm test`: 85 passed, 0 failed
+
+## 2026-03-20 (Config-Driven Ranking + Default Volume)
+
+### Persona Surface Simplification
+- Removed manual persona traits from the active runtime contract:
+  - `src/taste/taste-engine.ts`
+  - `src/history/history-schema.ts`
+  - `src/history/history-store.ts`
+  - `src/history/history-store-migrations.ts`
+- `session_state` now keeps only `persona_taste_text`
+- `get_session_state()` now returns `persona: { taste }`
+- Removed MCP tool `set_persona_traits` and updated dashboard `/api/persona` to accept only `taste`
+
+### Runtime Config Expansion
+- Extended `${SBOTIFY_DATA_DIR || ~/.sbotify}/config.json` with:
+  - `defaultVolume`
+  - `discoverRanking`
+- Default runtime config is now:
+  - `dashboardPort: 3737`
+  - `daemonPort: 3747`
+  - `defaultVolume: 80`
+  - `discoverRanking: { exploration: 0.35, variety: 0.55, loyalty: 0.65 }`
+- `src/audio/mpv-controller.ts` now starts mpv with configured `defaultVolume`
+- `src/taste/discover-pipeline.ts` and `src/taste/discover-soft-ranker.ts` now read fixed ranking weights from runtime config instead of persona state
+
+### Dashboard + Tests + Validation
+- Removed dashboard trait sliders and rewired the persona editor to taste-only updates
+- Updated state-redesign tests, persona sync tests, runtime config tests, and discover pipeline tests to the new contract
+- Validation:
+  - `npm run build`: passed
+  - `npm test`: 85 passed, 0 failed
+
 ## 2026-03-20 (Runtime Config + DB Cleanup)
 
 ### Exact Port Config + Shared Data Dir
@@ -50,7 +108,7 @@
   - stop active playback
   - clear runtime queue state
   - invalidate discover cache
-  - keep persona taste/traits intact
+  - keep persona taste intact
 
 ### Tests + Validation
 - Rewrote history-store tests around the trimmed API in:

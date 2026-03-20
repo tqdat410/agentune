@@ -12,7 +12,7 @@ export interface DiscoverCandidate {
 
 export interface DiscoverBatchParams {
   artist?: string;
-  genres?: string[];
+  keywords?: string[];
 }
 
 interface DiscoverAppleProvider {
@@ -32,36 +32,36 @@ export class DiscoverBatchBuilder {
 
   async buildBatches(params: DiscoverBatchParams): Promise<DiscoverCandidate[]> {
     const normalizedArtist = normalizeSeed(params.artist);
-    const normalizedGenres = normalizeSeeds(params.genres ?? []);
+    const normalizedKeywords = normalizeSeeds(params.keywords ?? []);
 
     let artistSeeds = normalizedArtist ? [normalizedArtist] : [];
-    let genreSeeds = normalizedGenres;
+    let keywordSeeds = normalizedKeywords;
 
-    if (artistSeeds.length === 0 && genreSeeds.length === 0) {
+    if (artistSeeds.length === 0 && keywordSeeds.length === 0) {
       const defaultSeeds = this.getDefaultSeeds();
       artistSeeds = defaultSeeds.artistSeeds;
-      genreSeeds = defaultSeeds.genreSeeds;
+      keywordSeeds = defaultSeeds.keywordSeeds;
     }
 
-    if (artistSeeds.length === 0 && genreSeeds.length === 0) {
+    if (artistSeeds.length === 0 && keywordSeeds.length === 0) {
       return [];
     }
 
     const selectedArtistSeeds = artistSeeds.slice(0, MAX_APPLE_CALLS);
     const remainingCalls = MAX_APPLE_CALLS - selectedArtistSeeds.length;
-    const selectedGenreSeeds = genreSeeds.slice(0, remainingCalls);
+    const selectedKeywordSeeds = keywordSeeds.slice(0, remainingCalls);
 
     const artistPromises = selectedArtistSeeds.map((artist) => this.loadArtistCandidates(artist));
-    const genrePromises = selectedGenreSeeds.map((genre) => this.loadGenreCandidates(genre));
-    const batches = await Promise.all([...artistPromises, ...genrePromises]);
+    const keywordPromises = selectedKeywordSeeds.map((keyword) => this.loadKeywordCandidates(keyword));
+    const batches = await Promise.all([...artistPromises, ...keywordPromises]);
 
     return batches.flat();
   }
 
-  private getDefaultSeeds(): { artistSeeds: string[]; genreSeeds: string[] } {
+  private getDefaultSeeds(): { artistSeeds: string[]; keywordSeeds: string[] } {
     const artistSeeds = normalizeSeeds(this.historyStore.getTopArtists(3).map((artist) => artist.artist));
-    const genreSeeds = normalizeSeeds(this.historyStore.getTopTags(3).map((tag) => tag.tag));
-    return { artistSeeds, genreSeeds };
+    const keywordSeeds = normalizeSeeds(this.historyStore.getTopTags(3).map((tag) => tag.tag));
+    return { artistSeeds, keywordSeeds };
   }
 
   private async loadArtistCandidates(artist: string): Promise<DiscoverCandidate[]> {
@@ -74,12 +74,12 @@ export class DiscoverBatchBuilder {
     }
   }
 
-  private async loadGenreCandidates(genre: string): Promise<DiscoverCandidate[]> {
+  private async loadKeywordCandidates(keyword: string): Promise<DiscoverCandidate[]> {
     try {
-      const tracks = await this.apple.searchByGenre(genre, GENRE_RESULT_LIMIT);
-      return tracks.map((track) => mapGenreTrack(track, genre));
+      const tracks = await this.apple.searchByGenre(keyword, GENRE_RESULT_LIMIT);
+      return tracks.map((track) => mapKeywordTrack(track, keyword));
     } catch (err) {
-      console.error(`[sbotify] Discover genre batch failed for "${genre}": ${(err as Error).message}`);
+      console.error(`[sbotify] Discover keyword batch failed for "${keyword}": ${(err as Error).message}`);
       return [];
     }
   }
@@ -96,11 +96,11 @@ function mapArtistTrack(track: AppleTrack): DiscoverCandidate {
   };
 }
 
-function mapGenreTrack(track: AppleTrack, genre: string): DiscoverCandidate {
+function mapKeywordTrack(track: AppleTrack, keyword: string): DiscoverCandidate {
   return {
     title: track.title,
     artist: track.artist,
-    tags: collectTags(genre, track.genre),
+    tags: collectTags(keyword, track.genre),
     provider: 'apple',
     appleTrackId: track.trackId,
     appleArtistId: track.artistId,

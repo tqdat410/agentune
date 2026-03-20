@@ -34,13 +34,18 @@ function isMpvInstalled(): boolean {
 
 export class MpvController extends EventEmitter {
   private player: mpvAPI | null = null;
-  private state: MpvState = {
-    currentTrack: null,
-    isPlaying: false,
-    isMuted: false,
-    volume: 80,
-  };
+  private state: MpvState;
   private initialized = false;
+
+  constructor(initialVolume = 80) {
+    super();
+    this.state = {
+      currentTrack: null,
+      isPlaying: false,
+      isMuted: false,
+      volume: clampVolume(initialVolume),
+    };
+  }
 
   // node-mpv v1.5 spawns mpv in constructor — no start() method
   init(): void {
@@ -239,13 +244,17 @@ export class MpvController extends EventEmitter {
 // Singleton instance shared across the application
 let controller: MpvController | null = null;
 
-export function createMpvController(): MpvController {
+export function createMpvController(initialVolume = 80): MpvController {
   if (!controller) {
-    controller = new MpvController();
+    controller = new MpvController(initialVolume);
   }
   return controller;
 }
 
 export function getMpvController(): MpvController | null {
   return controller;
+}
+
+function clampVolume(level: number): number {
+  return Math.max(0, Math.min(100, Math.round(level)));
 }

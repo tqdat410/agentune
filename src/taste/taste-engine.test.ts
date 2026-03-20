@@ -38,95 +38,14 @@ function seedPlay(
   store.updatePlay(playId, { played_sec: track.playedSec, skipped: track.skipped ?? false });
 }
 
-test('TasteEngine.getTraits defaults to neutral even when history exists', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-    for (let index = 0; index < 10; index += 1) {
-      seedPlay(store, {
-        title: `Track ${index}`,
-        artist: `Artist ${index}`,
-        duration: 200,
-        tags: index % 2 === 0 ? ['ambient', 'focus'] : ['night', 'jazz'],
-        playedSec: 150 + index,
-      });
-    }
-
-    const engine = new TasteEngine(store);
-    assert.deepEqual(engine.getTraits(), {
-      exploration: 0.5,
-      variety: 0.5,
-      loyalty: 0.5,
-    });
-
-    const summary = engine.getSummary();
-    assert.deepEqual(summary.persona.traits, {
-      exploration: 0.5,
-      variety: 0.5,
-      loyalty: 0.5,
-    });
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('TasteEngine.saveTraits round-trips and summary uses stored manual values', () => {
-  const dbPath = getTempDbPath();
-  try {
-    const store = new HistoryStore(dbPath);
-    for (let index = 0; index < 10; index += 1) {
-      seedPlay(store, {
-        title: `Track ${index}`,
-        artist: `Artist ${index}`,
-        duration: 200,
-        tags: ['ambient', index % 2 === 0 ? 'focus' : 'night'],
-        playedSec: 180,
-      });
-    }
-
-    const engine = new TasteEngine(store);
-    const savedTraits = engine.saveTraits({
-      exploration: 0.85,
-      variety: 0.2,
-      loyalty: 0.65,
-    });
-
-    assert.deepEqual(savedTraits, {
-      exploration: 0.85,
-      variety: 0.2,
-      loyalty: 0.65,
-    });
-    assert.deepEqual(engine.getTraits(), savedTraits);
-
-    const summary = engine.getSummary();
-    assert.deepEqual(summary.persona.traits, savedTraits);
-    assert.equal(summary.history.recent.length, 5);
-    store.close();
-  } finally {
-    cleanupDb(dbPath);
-  }
-});
-
-test('TasteEngine rejects invalid manual trait payloads', () => {
+test('TasteEngine defaults persona taste to an empty string', () => {
   const dbPath = getTempDbPath();
   try {
     const store = new HistoryStore(dbPath);
     const engine = new TasteEngine(store);
 
-    assert.throws(() => {
-      engine.saveTraits({
-        exploration: 1.1,
-        variety: 0.5,
-        loyalty: 0.5,
-      });
-    });
-
-    assert.deepEqual(engine.getTraits(), {
-      exploration: 0.5,
-      variety: 0.5,
-      loyalty: 0.5,
-    });
+    assert.deepEqual(engine.getPersona(), { taste: '' });
+    assert.equal(engine.getSummary().persona.Preferences, '');
     store.close();
   } finally {
     cleanupDb(dbPath);
@@ -149,15 +68,27 @@ test('TasteEngine taste text round-trips and appears in summary', () => {
 
     const engine = new TasteEngine(store);
     engine.saveTasteText('Ambient nights, piano, and patient post-rock builds.');
-    engine.saveTraits({ exploration: 0.4, variety: 0.7, loyalty: 0.3 });
 
     assert.equal(engine.getTasteText(), 'Ambient nights, piano, and patient post-rock builds.');
     const summary = engine.getSummary();
-    assert.equal(summary.persona.taste, 'Ambient nights, piano, and patient post-rock builds.');
-    assert.deepEqual(summary.persona.traits, { exploration: 0.4, variety: 0.7, loyalty: 0.3 });
+    assert.equal(summary.persona.Preferences, 'Ambient nights, piano, and patient post-rock builds.');
     assert.equal(summary.history.recent.length, 5);
     assert.ok(summary.history.stats.topArtists.length > 0);
-    assert.ok(summary.history.stats.topTags.length > 0);
+    assert.ok(summary.history.stats.topKeywords.length > 0);
+    store.close();
+  } finally {
+    cleanupDb(dbPath);
+  }
+});
+
+test('TasteEngine truncates saved taste text to 1000 characters', () => {
+  const dbPath = getTempDbPath();
+  try {
+    const store = new HistoryStore(dbPath);
+    const engine = new TasteEngine(store);
+    engine.saveTasteText('x'.repeat(1200));
+
+    assert.equal(engine.getTasteText().length, 1000);
     store.close();
   } finally {
     cleanupDb(dbPath);
@@ -189,11 +120,11 @@ test('createTasteEngine rebinds to a new store instead of keeping a closed singl
     firstStore.close();
 
     const secondStore = new HistoryStore(secondDbPath);
-    secondStore.savePersonaTraits({ exploration: 0.9, variety: 0.1, loyalty: 0.2 });
+    secondStore.savePersonaTasteText('Second store taste');
 
     const secondEngine = createTasteEngine(secondStore);
     assert.notStrictEqual(firstEngine, secondEngine);
-    assert.deepEqual(secondEngine.getTraits(), { exploration: 0.9, variety: 0.1, loyalty: 0.2 });
+    assert.deepEqual(secondEngine.getPersona(), { taste: 'Second store taste' });
     secondStore.close();
   } finally {
     cleanupDb(firstDbPath);

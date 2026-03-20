@@ -2,7 +2,7 @@ import type { DiscoverCandidate } from './discover-batch-builder.js';
 
 export interface DiscoverPaginationParams {
   artist?: string;
-  genres?: string[];
+  keywords?: string[];
 }
 
 interface SnapshotEntry {
@@ -66,10 +66,10 @@ export class DiscoverPaginationCache {
 
   private computeKey(params: DiscoverPaginationParams): string {
     const artist = normalizeValue(params.artist);
-    const genres = [...new Set((params.genres ?? []).map((genre) => normalizeValue(genre)).filter(Boolean))]
+    const keywords = [...new Set((params.keywords ?? []).map((keyword) => normalizeValue(keyword)).filter(Boolean))]
       .sort()
       .join(',');
-    return `${artist}|${genres}`;
+    return `${artist}|${keywords}`;
   }
 
   private deleteSnapshot(key: string): void {

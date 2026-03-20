@@ -26,7 +26,12 @@ test('loadRuntimeConfig creates default config when missing', () => {
   try {
     const config = loadRuntimeConfig();
     const configPath = path.join(dataDir, 'config.json');
-    assert.deepEqual(config, { dashboardPort: 3737, daemonPort: 3747 });
+    assert.deepEqual(config, {
+      dashboardPort: 3737,
+      daemonPort: 3747,
+      defaultVolume: 80,
+      discoverRanking: { exploration: 0.35, variety: 0.55, loyalty: 0.65 },
+    });
     assert.equal(fs.existsSync(configPath), true);
     assert.deepEqual(JSON.parse(fs.readFileSync(configPath, 'utf8')), config);
   } finally {
@@ -46,6 +51,41 @@ test('loadRuntimeConfig rejects invalid port values', () => {
 
   try {
     assert.throws(() => loadRuntimeConfig(), /dashboardPort must be an integer between 1 and 65535/i);
+  } finally {
+    if (previous === undefined) delete process.env.SBOTIFY_DATA_DIR;
+    else process.env.SBOTIFY_DATA_DIR = previous;
+    resetRuntimeConfigCache();
+    cleanupDataDir(dataDir);
+  }
+});
+
+test('loadRuntimeConfig merges missing config fields and rejects invalid ranking values', () => {
+  const previous = process.env.SBOTIFY_DATA_DIR;
+  const dataDir = createTempDataDir();
+  process.env.SBOTIFY_DATA_DIR = dataDir;
+  fs.writeFileSync(path.join(dataDir, 'config.json'), JSON.stringify({
+    dashboardPort: 3838,
+    daemonPort: 3848,
+    discoverRanking: { exploration: 2 },
+  }));
+  resetRuntimeConfigCache();
+
+  try {
+    assert.throws(() => loadRuntimeConfig(), /discoverRanking\.exploration must be a number between 0 and 1/i);
+    fs.writeFileSync(path.join(dataDir, 'config.json'), JSON.stringify({
+      dashboardPort: 3838,
+      daemonPort: 3848,
+      defaultVolume: 60,
+      discoverRanking: { variety: 0.75 },
+    }));
+    resetRuntimeConfigCache();
+
+    assert.deepEqual(loadRuntimeConfig(), {
+      dashboardPort: 3838,
+      daemonPort: 3848,
+      defaultVolume: 60,
+      discoverRanking: { exploration: 0.35, variety: 0.75, loyalty: 0.65 },
+    });
   } finally {
     if (previous === undefined) delete process.env.SBOTIFY_DATA_DIR;
     else process.env.SBOTIFY_DATA_DIR = previous;

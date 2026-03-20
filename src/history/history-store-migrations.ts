@@ -1,6 +1,5 @@
 import type Database from 'better-sqlite3';
 import {
-  DEFAULT_PERSONA_TRAITS_JSON,
   HISTORY_SCHEMA_VERSION,
   INDEXES_SQL,
   PLAYS_TABLE_SQL,
@@ -24,7 +23,7 @@ export function applyHistoryStoreMigrations(db: Database.Database): void {
   }
 
   if (version < HISTORY_SCHEMA_VERSION) {
-    migrateToVersion2(db);
+    migrateToVersion3(db);
   }
 
   db.exec([
@@ -37,7 +36,7 @@ export function applyHistoryStoreMigrations(db: Database.Database): void {
   db.pragma(`user_version = ${HISTORY_SCHEMA_VERSION}`);
 }
 
-function migrateToVersion2(db: Database.Database): void {
+function migrateToVersion3(db: Database.Database): void {
   const trackColumns = getColumnNames(db, 'tracks');
   const playColumns = getColumnNames(db, 'plays');
   const sessionStateColumns = getColumnNames(db, 'session_state');
@@ -70,8 +69,7 @@ function migrateToVersion2(db: Database.Database): void {
 
       CREATE TABLE session_state_next (
         id INTEGER PRIMARY KEY CHECK (id = 1),
-        persona_taste_text TEXT DEFAULT '',
-        persona_traits_json TEXT DEFAULT '${DEFAULT_PERSONA_TRAITS_JSON}'
+        persona_taste_text TEXT DEFAULT ''
       );
     `);
 
@@ -112,11 +110,10 @@ function migrateToVersion2(db: Database.Database): void {
 
     if (sessionStateColumns.size > 0) {
       db.exec(`
-        INSERT INTO session_state_next (id, persona_taste_text, persona_traits_json)
+        INSERT INTO session_state_next (id, persona_taste_text)
         SELECT
           id,
-          ${selectColumn(sessionStateColumns, 'persona_taste_text', "''")},
-          COALESCE(NULLIF(TRIM(${selectColumn(sessionStateColumns, 'persona_traits_json', `'${DEFAULT_PERSONA_TRAITS_JSON}'`)}), ''), '${DEFAULT_PERSONA_TRAITS_JSON}')
+          ${selectColumn(sessionStateColumns, 'persona_taste_text', "''")}
         FROM session_state
         WHERE id = 1
       `);

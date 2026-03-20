@@ -10,15 +10,16 @@
 - Apple-first resolution flow: complete
 - flat Apple-only discover rewrite: implemented
 - agent-first state redesign: complete
-- hard manual persona traits: complete
+- config-driven discover ranking: complete
+- agent-facing discover guidance cleanup: complete
 - discover rewrite automated validation: complete
 - daemon/MCP end-to-end smoke record: pending
 
 Last validated:
 
-- `2026-03-19`
+- `2026-03-20`
 - `npm run build`: passed
-- `npm test`: 97 passed, 0 failed
+- `npm test`: 85 passed, 0 failed
 - built-handler smoke: `discover({ artist: "Nils Frahm", limit: 1 })` returned a paginated Apple candidate
 
 ## Completed Milestones
@@ -41,7 +42,7 @@ Last validated:
 - live playback state
 - queue preview
 - volume and mute controls
-- persona editor with manual trait controls
+- persona taste editor
 - `/api/persona` and WebSocket persona sync
 
 ### State Redesign
@@ -49,14 +50,15 @@ Last validated:
 - removed scorer-driven taste loop from active runtime
 - replaced old taste state with:
   - `context`
-  - `persona` (`exploration`, `variety`, `loyalty`, `taste`)
+  - `persona` (`Preferences`)
   - `history`
-- persisted manual persona traits are now the source of truth for session state, dashboard state, and discover nudges
+- moved discover reranking weights into runtime config
 - replaced grouped discover lanes with flat paginated Apple-only discover output
-- added soft ranking from persona traits + history plus snapshot pagination cache
+- added soft ranking from fixed config weights + history plus snapshot pagination cache
+- renamed agent-facing discover seeds/results from `genres`/`tags` to `keywords`
+- added `nextGuide` so the agent knows whether to paginate or improve input
 - kept `mode` / `intent` accepted but ignored for one compatibility cycle
 - added `update_persona`
-- added `set_persona_traits`
 
 ## Active Focus
 
@@ -91,7 +93,7 @@ Next work:
 ## Near-Term Backlog
 
 - more direct MCP coverage around discover pagination and cache invalidation
-- more daemon/proxy end-to-end coverage for persona updates
+- more daemon/proxy end-to-end coverage for taste updates
 - optional richer dashboard controls
 - publish checklist for npm release
 

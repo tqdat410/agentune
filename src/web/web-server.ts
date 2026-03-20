@@ -8,8 +8,7 @@ import { getHistoryStore, type HistoryStore } from '../history/history-store.js'
 import { getQueuePlaybackController } from '../queue/queue-playback-controller.js';
 import type { QueueManager } from '../queue/queue-manager.js';
 import { loadRuntimeConfig } from '../runtime/runtime-config.js';
-import { getTasteEngine, type PersonaTraits } from '../taste/taste-engine.js';
-import { invalidateDiscoverCache } from '../taste/discover-pagination-cache.js';
+import { getTasteEngine } from '../taste/taste-engine.js';
 import { StateBroadcaster } from './state-broadcaster.js';
 import {
   getMimeType,
@@ -232,21 +231,12 @@ export class WebServer {
 
   private async handlePersonaUpdate(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const body = await readJsonBody(request);
-    const hasTaste = hasOwn(body, 'taste');
-    const hasTraits = hasOwn(body, 'traits');
-
-    if (!hasTaste && !hasTraits) {
-      sendJson(response, { message: 'taste and/or traits field required' }, 400);
+    if (!hasOwn(body, 'taste')) {
+      sendJson(response, { message: 'taste field required' }, 400);
       return;
     }
-    if (hasTaste && typeof body?.taste !== 'string') {
+    if (typeof body?.taste !== 'string') {
       sendJson(response, { message: 'taste must be a string' }, 400);
-      return;
-    }
-
-    const nextTraits = hasTraits ? parsePersonaTraitsPayload(body?.traits) : null;
-    if (hasTraits && !nextTraits) {
-      sendJson(response, { message: 'traits must include exploration, variety, and loyalty numbers between 0 and 1' }, 400);
       return;
     }
 
@@ -256,14 +246,7 @@ export class WebServer {
       return;
     }
 
-    if (hasTaste) {
-      taste.saveTasteText((body?.taste as string).slice(0, 1000));
-    }
-    if (nextTraits) {
-      taste.saveTraits(nextTraits);
-      invalidateDiscoverCache();
-    }
-
+    taste.saveTasteText(body.taste.slice(0, 1000));
     sendJson(response, { updated: true, ...taste.getPersona() });
     this.broadcastPersona();
   }
@@ -337,31 +320,6 @@ function isDatabaseActionPath(pathname: string): pathname is '/api/database/clea
   return pathname === '/api/database/clear-history'
     || pathname === '/api/database/clear-provider-cache'
     || pathname === '/api/database/full-reset';
-}
-
-function parsePersonaTraitsPayload(value: unknown): PersonaTraits | null {
-  if (!value || typeof value !== 'object') {
-    return null;
-  }
-
-  const traits = value as Record<string, unknown>;
-  if (
-    !isTraitNumber(traits.exploration) ||
-    !isTraitNumber(traits.variety) ||
-    !isTraitNumber(traits.loyalty)
-  ) {
-    return null;
-  }
-
-  return {
-    exploration: traits.exploration,
-    variety: traits.variety,
-    loyalty: traits.loyalty,
-  };
-}
-
-function isTraitNumber(value: unknown): value is number {
-  return typeof value === 'number' && !Number.isNaN(value) && value >= 0 && value <= 1;
 }
 
 let webServer: WebServer | null = null;

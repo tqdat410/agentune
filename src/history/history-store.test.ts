@@ -122,19 +122,13 @@ test('HistoryStore exposes ranking helpers and search', async () => {
   }
 });
 
-test('HistoryStore persists persona taste and traits and rejects invalid traits', () => {
+test('HistoryStore persists persona taste text', () => {
   const dbPath = getTempDbPath();
   try {
     const store = new HistoryStore(dbPath);
     store.savePersonaTasteText('Warm ambient and slow piano.');
-    store.savePersonaTraits({ exploration: 0.8, variety: 0.35, loyalty: 0.6 });
 
     assert.equal(store.getPersonaTasteText(), 'Warm ambient and slow piano.');
-    assert.deepEqual(store.getPersonaTraits(), { exploration: 0.8, variety: 0.35, loyalty: 0.6 });
-
-    assert.throws(() => {
-      store.savePersonaTraits({ exploration: -0.1, variety: 0.5, loyalty: 0.5 });
-    });
     store.close();
   } finally {
     cleanupDb(dbPath);
@@ -174,7 +168,6 @@ test('HistoryStore full reset preserves persona state', () => {
     const store = new HistoryStore(dbPath);
     store.recordPlay(createTrack());
     store.savePersonaTasteText('Keep me');
-    store.savePersonaTraits({ exploration: 0.4, variety: 0.6, loyalty: 0.3 });
     store.getDatabase().prepare(`
       INSERT INTO provider_cache (cache_key, response_json, fetched_at)
       VALUES ('apple:test', '{}', 123)
@@ -183,7 +176,6 @@ test('HistoryStore full reset preserves persona state', () => {
     const reset = store.fullReset();
     assert.deepEqual(reset.removed, { plays: 1, tracks: 1, providerCache: 1 });
     assert.equal(store.getPersonaTasteText(), 'Keep me');
-    assert.deepEqual(store.getPersonaTraits(), { exploration: 0.4, variety: 0.6, loyalty: 0.3 });
     assert.deepEqual(store.getDatabaseStats().counts, { plays: 0, tracks: 0, providerCache: 0 });
     store.close();
   } finally {

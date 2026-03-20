@@ -7,8 +7,8 @@ import path from 'path';
 import test from 'node:test';
 import WebSocket from 'ws';
 import { HistoryStore } from '../history/history-store.js';
-import { invalidateDiscoverCache, getDiscoverPaginationCache } from '../taste/discover-pagination-cache.js';
-import { handleSetPersonaTraits, handleUpdatePersona } from '../mcp/tool-handlers.js';
+import { getDiscoverPaginationCache, invalidateDiscoverCache } from '../taste/discover-pagination-cache.js';
+import { handleUpdatePersona } from '../mcp/tool-handlers.js';
 import { QueueManager } from '../queue/queue-manager.js';
 import { createTasteEngine } from '../taste/taste-engine.js';
 import { createWebServer } from './web-server.js';
@@ -75,9 +75,9 @@ async function getAvailablePort(): Promise<number> {
 }
 
 async function waitForBufferedMessage(
-  messages: Array<{ type?: string; data?: { taste?: string; traits?: { exploration?: number; variety?: number; loyalty?: number } } }>,
-  predicate: (payload: { type?: string; data?: { taste?: string; traits?: { exploration?: number; variety?: number; loyalty?: number } } }) => boolean,
-): Promise<{ type?: string; data?: { taste?: string; traits?: { exploration?: number; variety?: number; loyalty?: number } } }> {
+  messages: Array<{ type?: string; data?: { taste?: string } }>,
+  predicate: (payload: { type?: string; data?: { taste?: string } }) => boolean,
+): Promise<{ type?: string; data?: { taste?: string } }> {
   return await new Promise((resolve, reject) => {
     const deadline = Date.now() + 5000;
     const check = () => {
@@ -99,12 +99,11 @@ async function waitForBufferedMessage(
   });
 }
 
-test('WebServer syncs dashboard persona API and MCP manual trait updates', async () => {
+test('WebServer syncs dashboard persona API and MCP taste updates without touching discover cache', async () => {
   const dbPath = getTempDbPath();
   const store = new HistoryStore(dbPath);
   const tasteEngine = createTasteEngine(store);
   tasteEngine.saveTasteText('Initial taste');
-  tasteEngine.saveTraits({ exploration: 0.25, variety: 0.5, loyalty: 0.75 });
 
   const webServer = createWebServer(new FakeMpv() as never, new QueueManager(), {
     historyStore: store,
@@ -113,113 +112,67 @@ test('WebServer syncs dashboard persona API and MCP manual trait updates', async
   await webServer.waitUntilReady();
 
   const socket = new WebSocket(`${webServer.getDashboardUrl().replace('http', 'ws')}/ws`);
-  const messages: Array<{ type?: string; data?: { taste?: string; traits?: { exploration?: number; variety?: number; loyalty?: number } } }> = [];
+  const messages: Array<{ type?: string; data?: { taste?: string } }> = [];
   socket.on('message', (raw) => {
-    messages.push(JSON.parse(raw.toString()) as { type?: string; data?: { taste?: string; traits?: { exploration?: number; variety?: number; loyalty?: number } } });
+    messages.push(JSON.parse(raw.toString()) as { type?: string; data?: { taste?: string } });
   });
   await new Promise<void>((resolve) => socket.once('open', () => resolve()));
 
   try {
     const initialResponse = await fetch(`${webServer.getDashboardUrl()}/api/persona`);
-    const initialPayload = await initialResponse.json() as {
-      taste: string;
-      traits: { exploration: number; variety: number; loyalty: number };
-    };
+    const initialPayload = await initialResponse.json() as { taste: string };
     assert.equal(initialPayload.taste, 'Initial taste');
-    assert.deepEqual(initialPayload.traits, { exploration: 0.25, variety: 0.5, loyalty: 0.75 });
 
     const initialPersona = await waitForBufferedMessage(
       messages,
       (payload) => payload.type === 'persona' && payload.data?.taste === 'Initial taste',
     );
     assert.equal(initialPersona.data?.taste, 'Initial taste');
-    assert.deepEqual(initialPersona.data?.traits, { exploration: 0.25, variety: 0.5, loyalty: 0.75 });
+
+    const cache = getDiscoverPaginationCache();
+    cache.setSnapshot(
+      { keywords: ['focus'] },
+      [{ title: 'Focus Track', artist: 'Focus Artist', tags: ['focus'], provider: 'apple' }],
+    );
+    assert.notEqual(cache.getPage({ keywords: ['focus'] }, 1, 10), null);
 
     const dashboardResponse = await fetch(`${webServer.getDashboardUrl()}/api/persona`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        taste: 'Dashboard taste',
-        traits: { exploration: 0.4, variety: 0.85, loyalty: 0.15 },
-      }),
+      body: JSON.stringify({ taste: 'Dashboard taste' }),
     });
     const dashboardPayload = await dashboardResponse.json() as {
       updated: boolean;
       taste: string;
-      traits: { exploration: number; variety: number; loyalty: number };
     };
     assert.equal(dashboardPayload.updated, true);
     assert.equal(dashboardPayload.taste, 'Dashboard taste');
-    assert.deepEqual(dashboardPayload.traits, { exploration: 0.4, variety: 0.85, loyalty: 0.15 });
+    assert.notEqual(cache.getPage({ keywords: ['focus'] }, 1, 10), null);
 
     const dashboardPersona = await waitForBufferedMessage(
       messages,
-      (payload) => payload.type === 'persona' && payload.data?.taste === 'Dashboard taste'
-        && payload.data?.traits?.variety === 0.85,
+      (payload) => payload.type === 'persona' && payload.data?.taste === 'Dashboard taste',
     );
     assert.equal(dashboardPersona.data?.taste, 'Dashboard taste');
-
-    const tasteOnlyCache = getDiscoverPaginationCache();
-    tasteOnlyCache.setSnapshot(
-      { genres: ['focus'] },
-      [{ title: 'Focus Track', artist: 'Focus Artist', tags: ['focus'], provider: 'apple' }],
-    );
-    assert.notEqual(tasteOnlyCache.getPage({ genres: ['focus'] }, 1, 10), null);
-
-    const tasteOnlyResponse = await fetch(`${webServer.getDashboardUrl()}/api/persona`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ taste: 'Taste only dashboard update' }),
-    });
-    const tasteOnlyPayload = await tasteOnlyResponse.json() as {
-      updated: boolean;
-      taste: string;
-      traits: { exploration: number; variety: number; loyalty: number };
-    };
-    assert.equal(tasteOnlyResponse.status, 200);
-    assert.equal(tasteOnlyPayload.updated, true);
-    assert.equal(tasteOnlyPayload.taste, 'Taste only dashboard update');
-    assert.deepEqual(tasteOnlyPayload.traits, { exploration: 0.4, variety: 0.85, loyalty: 0.15 });
-    assert.notEqual(tasteOnlyCache.getPage({ genres: ['focus'] }, 1, 10), null);
 
     const invalidResponse = await fetch(`${webServer.getDashboardUrl()}/api/persona`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        traits: { exploration: 2, variety: 0.4, loyalty: 0.5 },
-      }),
+      body: JSON.stringify({}),
     });
     const invalidPayload = await invalidResponse.json() as { message: string };
     assert.equal(invalidResponse.status, 400);
-    assert.match(invalidPayload.message, /traits must include/i);
-
-    const cache = getDiscoverPaginationCache();
-    cache.setSnapshot(
-      { genres: ['ambient'] },
-      [{ title: 'Track', artist: 'Artist', tags: ['ambient'], provider: 'apple' }],
-    );
-    assert.notEqual(cache.getPage({ genres: ['ambient'] }, 1, 10), null);
-
-    const traitsResult = await handleSetPersonaTraits({ exploration: 0.9, variety: 0.1, loyalty: 0.2 });
-    assert.equal(traitsResult.isError, undefined);
-    assert.equal(cache.getPage({ genres: ['ambient'] }, 1, 10), null);
-
-    const traitsPersona = await waitForBufferedMessage(
-      messages,
-      (payload) => payload.type === 'persona' && payload.data?.traits?.exploration === 0.9,
-    );
-    assert.equal(traitsPersona.data?.taste, 'Taste only dashboard update');
-    assert.deepEqual(traitsPersona.data?.traits, { exploration: 0.9, variety: 0.1, loyalty: 0.2 });
+    assert.match(invalidPayload.message, /taste field required/i);
 
     const updateResult = await handleUpdatePersona({ taste: 'Updated taste' });
     assert.equal(updateResult.isError, undefined);
+    assert.notEqual(cache.getPage({ keywords: ['focus'] }, 1, 10), null);
 
     const updatedPersona = await waitForBufferedMessage(
       messages,
       (payload) => payload.type === 'persona' && payload.data?.taste === 'Updated taste',
     );
     assert.equal(updatedPersona.data?.taste, 'Updated taste');
-    assert.deepEqual(updatedPersona.data?.traits, { exploration: 0.9, variety: 0.1, loyalty: 0.2 });
   } finally {
     socket.close();
     await webServer.destroy();

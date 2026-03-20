@@ -61,7 +61,7 @@ test('HistoryStore.getTopArtists counts real plays instead of multiplying track 
   }
 });
 
-test('HistoryStore exposes detailed recent plays, tag stats, and manual persona state', () => {
+test('HistoryStore exposes detailed recent plays, tag stats, and persona taste text', () => {
   const dbPath = getTempDbPath();
   try {
     const store = new HistoryStore(dbPath);
@@ -81,7 +81,6 @@ test('HistoryStore exposes detailed recent plays, tag stats, and manual persona 
       playedSec: 210,
     });
     store.savePersonaTasteText('Warm ambient and slow piano.');
-    store.savePersonaTraits({ exploration: 0.8, variety: 0.35, loyalty: 0.6 });
 
     const recentDetailed = store.getRecentPlaysDetailed(5);
     const topTags = store.getTopTags(5);
@@ -91,14 +90,13 @@ test('HistoryStore exposes detailed recent plays, tag stats, and manual persona 
     assert.equal(recentDetailed[1]?.skipped, true);
     assert.ok(topTags.some((tag) => tag.tag === 'ambient' && tag.frequency >= 2));
     assert.equal(store.getPersonaTasteText(), 'Warm ambient and slow piano.');
-    assert.deepEqual(store.getPersonaTraits(), { exploration: 0.8, variety: 0.35, loyalty: 0.6 });
     store.close();
   } finally {
     cleanupDb(dbPath);
   }
 });
 
-test('HistoryStore migrates legacy schema to v2 and drops unused columns', () => {
+test('HistoryStore migrates legacy schema to v3 and drops unused columns', () => {
   const dbPath = getTempDbPath();
   try {
     const legacyDb = new Database(dbPath);
@@ -164,10 +162,10 @@ test('HistoryStore migrates legacy schema to v2 and drops unused columns', () =>
       SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'preferences'
     `).get() as { name: string } | undefined;
 
-    assert.equal(db.pragma('user_version', { simple: true }), 2);
+    assert.equal(db.pragma('user_version', { simple: true }), 3);
     assert.equal(store.getPersonaTasteText(), 'Migrated taste');
-    assert.deepEqual(store.getPersonaTraits(), { exploration: 0.2, variety: 0.9, loyalty: 0.4 });
     assert.ok(!sessionColumns.some((column) => column.name === 'lane_json'));
+    assert.ok(!sessionColumns.some((column) => column.name === 'persona_traits_json'));
     assert.ok(!playColumns.some((column) => column.name === 'lane_id'));
     assert.ok(!trackColumns.some((column) => column.name === 'similar_json'));
     assert.equal(preferencesTable, undefined);

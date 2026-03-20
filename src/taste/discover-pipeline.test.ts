@@ -83,7 +83,7 @@ function createPipeline(apple: FakeAppleProvider, store = createStore()): Discov
   return new DiscoverPipeline(
     batchBuilder,
     store as never,
-    { getTraits: () => ({ exploration: 0.5, variety: 0.5, loyalty: 0.5 }) },
+    { exploration: 0.35, variety: 0.55, loyalty: 0.65 },
     new DiscoverPaginationCache(),
   );
 }
@@ -96,10 +96,11 @@ test('DiscoverPipeline returns flat paginated candidates without internal Apple 
   assert.equal(result.limit, 2);
   assert.equal(result.candidates.length, 2);
   assert.equal(result.candidates[0]?.provider, 'apple');
+  assert.equal(result.nextGuide, 'Pick from these candidates or call discover with the next page.');
   assert.ok(!('appleTrackId' in result.candidates[0]!));
 });
 
-test('DiscoverPipeline uses history seeds when artist and genres are omitted', async () => {
+test('DiscoverPipeline uses history seeds when artist and keywords are omitted', async () => {
   const apple = new FakeAppleProvider();
   const pipeline = createPipeline(apple);
 
@@ -114,9 +115,9 @@ test('DiscoverPipeline paginates from cache without re-querying Apple', async ()
   const apple = new FakeAppleProvider();
   const pipeline = createPipeline(apple);
 
-  const pageOne = await pipeline.discover({ genres: ['ambient'], limit: 2 });
+  const pageOne = await pipeline.discover({ keywords: ['ambient'], limit: 2 });
   const callsAfterPageOne = apple.genreCalls.length + apple.artistCalls.length;
-  const pageTwo = await pipeline.discover({ genres: ['ambient'], page: 2, limit: 2 });
+  const pageTwo = await pipeline.discover({ keywords: ['ambient'], page: 2, limit: 2 });
 
   assert.notDeepEqual(pageOne.candidates, pageTwo.candidates);
   assert.equal(apple.genreCalls.length + apple.artistCalls.length, callsAfterPageOne);
@@ -125,11 +126,15 @@ test('DiscoverPipeline paginates from cache without re-querying Apple', async ()
 test('DiscoverPipeline marks page overflow as page exhaustion instead of cold-start empty', async () => {
   const pipeline = createPipeline(new FakeAppleProvider());
 
-  await pipeline.discover({ genres: ['ambient'], limit: 2 });
-  const overflow = await pipeline.discover({ genres: ['ambient'], page: 10, limit: 2 });
+  await pipeline.discover({ keywords: ['ambient'], limit: 2 });
+  const overflow = await pipeline.discover({ keywords: ['ambient'], page: 10, limit: 2 });
 
   assert.equal(overflow.candidates.length, 0);
   assert.equal(overflow.emptyReason, 'page_exhausted');
+  assert.equal(
+    overflow.nextGuide,
+    'No more results on this page. Go back to an earlier page or improve artist/keywords input.',
+  );
 });
 
 test('DiscoverPipeline returns empty results when there is no history and no explicit seeds', async () => {
@@ -142,19 +147,23 @@ test('DiscoverPipeline returns empty results when there is no history and no exp
 
   assert.equal(result.candidates.length, 0);
   assert.equal(result.hasMore, false);
+  assert.equal(
+    result.nextGuide,
+    'No candidates found. Improve artist/keywords input or build more listening history first.',
+  );
 });
 
 test('DiscoverPipeline deduplicates repeated tracks and caps artist presence at three', async () => {
   const apple = new FakeAppleProvider();
   const pipeline = createPipeline(apple);
 
-  const result = await pipeline.discover({ genres: ['ambient'], limit: 10 });
+  const result = await pipeline.discover({ keywords: ['ambient'], limit: 10 });
   const ambientArtistCount = result.candidates.filter((candidate) => candidate.artist === 'ambient Artist').length;
 
   assert.equal(ambientArtistCount, 3);
 });
 
-test('DiscoverPipeline preserves tags from duplicate candidates before ranking', async () => {
+test('DiscoverPipeline preserves keywords from duplicate candidates before ranking', async () => {
   const apple = new FakeAppleProvider();
   apple.searchByGenre = async (genre: string) => {
     apple.genreCalls.push(genre);
@@ -171,12 +180,12 @@ test('DiscoverPipeline preserves tags from duplicate candidates before ranking',
   };
 
   const pipeline = createPipeline(apple);
-  const result = await pipeline.discover({ genres: ['ambient', 'focus'] });
+  const result = await pipeline.discover({ keywords: ['ambient', 'focus'] });
 
-  assert.deepEqual(result.candidates[0]?.tags, ['ambient', 'focus']);
+  assert.deepEqual(result.candidates[0]?.keywords, ['ambient', 'focus']);
 });
 
-test('DiscoverPipeline keeps artist tags non-empty when Apple genre is blank', async () => {
+test('DiscoverPipeline keeps artist keywords non-empty when Apple genre is blank', async () => {
   const apple = new FakeAppleProvider();
   apple.getArtistTracks = async (artist: string) => {
     apple.artistCalls.push(artist);
@@ -195,16 +204,16 @@ test('DiscoverPipeline keeps artist tags non-empty when Apple genre is blank', a
   const pipeline = createPipeline(apple);
   const result = await pipeline.discover({ artist: 'Blank Genre Artist' });
 
-  assert.deepEqual(result.candidates[0]?.tags, ['unknown']);
+  assert.deepEqual(result.candidates[0]?.keywords, ['unknown']);
 });
 
-test('DiscoverPipeline shares the six-call budget across artist and genres', async () => {
+test('DiscoverPipeline shares the six-call budget across artist and keywords', async () => {
   const apple = new FakeAppleProvider();
   const pipeline = createPipeline(apple);
 
   await pipeline.discover({
     artist: 'Seed Artist',
-    genres: ['ambient', 'piano', 'focus', 'night', 'modern classical', 'drone'],
+    keywords: ['ambient', 'piano', 'focus', 'night', 'modern classical', 'drone'],
   });
 
   assert.deepEqual(apple.artistCalls, ['Seed Artist']);

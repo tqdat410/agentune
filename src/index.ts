@@ -18,6 +18,8 @@ import { loadRuntimeConfig } from './runtime/runtime-config.js';
 // --- Shared bootstrap ---
 
 async function bootstrapComponents() {
+  const runtimeConfig = loadRuntimeConfig();
+
   // Initialize history store (SQLite) — non-fatal if it fails
   try {
     createHistoryStore();
@@ -40,9 +42,8 @@ async function bootstrapComponents() {
     console.error('[sbotify] Discovery provider initialized (Apple).');
   }
 
-  const mpv = createMpvController();
+  const mpv = createMpvController(runtimeConfig.defaultVolume);
   createQueuePlaybackController(mpv, queueManager, youtubeProvider);
-  const runtimeConfig = loadRuntimeConfig();
   const webServer = createWebServer(mpv, queueManager, { port: runtimeConfig.dashboardPort });
   await webServer.waitUntilReady();
 

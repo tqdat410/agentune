@@ -55,26 +55,9 @@
         <div class="config-body">
           <label>Your Taste</label>
           <textarea data-taste rows="3" maxlength="1000" placeholder="Describe your music taste..."></textarea>
+          <p class="config-help">Discover ranking now uses fixed values from `~/.sbotify/config.json`. This editor only stores free-text taste hints for the agent.</p>
           <button data-save-taste type="button">Save Persona</button>
           <p class="persona-message" data-persona-message aria-live="polite"></p>
-
-          <label>Manual Persona Traits <span class="subtle">persisted controls</span></label>
-          <p class="config-help">Stored traits stay fixed until you change them. Discover uses them as light ranking nudges.</p>
-          <div class="trait-row">
-            <label class="trait-label" for="trait-exploration">exploration</label>
-            <input data-trait-exploration-input id="trait-exploration" type="range" min="0" max="1" step="0.01" value="0.5" />
-            <span class="trait-val" data-trait-exploration-val>0.50</span>
-          </div>
-          <div class="trait-row">
-            <label class="trait-label" for="trait-variety">variety</label>
-            <input data-trait-variety-input id="trait-variety" type="range" min="0" max="1" step="0.01" value="0.5" />
-            <span class="trait-val" data-trait-variety-val>0.50</span>
-          </div>
-          <div class="trait-row">
-            <label class="trait-label" for="trait-loyalty">loyalty</label>
-            <input data-trait-loyalty-input id="trait-loyalty" type="range" min="0" max="1" step="0.01" value="0.5" />
-            <span class="trait-val" data-trait-loyalty-val>0.50</span>
-          </div>
         </div>
       </section>
 

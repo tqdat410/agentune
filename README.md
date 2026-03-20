@@ -7,7 +7,7 @@ sbotify is a Model Context Protocol (MCP) server that enables coding agents (Cla
 ## Features
 
 - **Agent-driven music control**: Taste-aware `discover -> play_song/add_song -> feedback` flow via MCP
-- **Apple-only discover pipeline**: flat, paginated Apple candidates with optional `artist` / `genres` seeds
+- **Apple-only discover pipeline**: flat, paginated Apple candidates with optional `artist` / `keywords` seeds
 - **Browser dashboard**: Real-time now-playing info, volume slider, and manual database cleanup on the configured dashboard port
 - **Headless playback**: Audio plays independently via mpv (no browser needed)
 - **Cross-platform**: Works on Windows, macOS, Linux
@@ -69,13 +69,15 @@ Then ask Claude Code:
 > "Play Blinding Lights by The Weeknd right now"
 > "What song is playing?"
 > "Skip to the next track"
-> "Set persona traits to exploration 0.8, variety 0.7, loyalty 0.3"
+> "Update persona taste to warm piano, ambient, and patient Vietnamese ballads"
 
 Current `discover` contract:
-- `discover(page?, limit?, artist?, genres?)` returns a flat page of Apple candidates.
+- `get_session_state()` returns time context, `persona.Preferences`, recent plays, top artists, and top keywords.
+- `discover(page?, limit?, artist?, keywords?)` returns a flat page of Apple candidates plus `nextGuide`.
 - `discover(page=2)` continues the same cached snapshot when more results exist.
 - Legacy `mode` and `intent` params are still accepted for compatibility, but ignored.
-- `set_persona_traits({ exploration, variety, loyalty })` updates the stored manual trait controls discover uses for light ranking nudges.
+- Agent should follow `nextGuide`: either keep the same input and change page, or improve `artist` / `keywords`.
+- Discover ranking uses fixed config values from `config.json`, not agent-editable persona traits.
 
 ### Browser Dashboard
 
@@ -83,7 +85,7 @@ Open the configured dashboard URL (default `http://localhost:3737`) in your brow
 - Now-playing track (title, artist, progress)
 - Volume slider
 - Live queue preview
-- Persona editor + manual stored listening traits
+- Persona taste editor
 - Database stats + manual cleanup actions
 
 ### Runtime Config
@@ -93,11 +95,17 @@ On first run, sbotify creates `${SBOTIFY_DATA_DIR || ~/.sbotify}/config.json`:
 ```json
 {
   "dashboardPort": 3737,
-  "daemonPort": 3747
+  "daemonPort": 3747,
+  "defaultVolume": 80,
+  "discoverRanking": {
+    "exploration": 0.35,
+    "variety": 0.55,
+    "loyalty": 0.65
+  }
 }
 ```
 
-Both ports are exact. If either port is already in use, startup fails instead of falling back to another port.
+Both ports are exact. If either port is already in use, startup fails instead of falling back to another port. `defaultVolume` sets the initial mpv volume on daemon startup, and `discoverRanking` provides the fixed reranking weights used by `discover()`.
 
 ## Architecture Overview
 

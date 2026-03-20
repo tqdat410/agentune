@@ -11,6 +11,7 @@ import { createDiscoverPipeline, getDiscoverPipeline } from '../taste/discover-p
 import { invalidateDiscoverCache } from '../taste/discover-pagination-cache.js';
 import { getQueuePlaybackController } from '../queue/queue-playback-controller.js';
 import { getQueueManager } from '../queue/queue-manager.js';
+import { loadRuntimeConfig } from '../runtime/runtime-config.js';
 import { getWebServer } from '../web/web-server.js';
 
 export type ToolContent = { type: "text"; text: string };
@@ -131,7 +132,7 @@ export async function handleDiscover(args: {
   page?: number;
   limit?: number;
   artist?: string;
-  genres?: string[];
+  keywords?: string[];
   mode?: unknown;
   intent?: unknown;
 }): Promise<ToolResult> {
@@ -140,13 +141,12 @@ export async function handleDiscover(args: {
     if (!store) return errorResult('History store not initialized.');
     const apple = getAppleSearchProvider();
     if (!apple) return errorResult('Apple provider not initialized.');
-    const taste = getTasteEngine();
-    if (!taste) return errorResult('Taste engine not initialized.');
 
+    const runtimeConfig = loadRuntimeConfig();
     const pipeline = getDiscoverPipeline() ?? createDiscoverPipeline(
       new DiscoverBatchBuilder(apple, store),
       store,
-      taste,
+      runtimeConfig.discoverRanking,
     );
     const result = await pipeline.discover(args);
     const { emptyReason, ...response } = result;
@@ -155,17 +155,12 @@ export async function handleDiscover(args: {
       return textResult({
         ...response,
         message: emptyReason === 'page_exhausted'
-          ? 'No more discover candidates in this snapshot. Change artist/genres or go back to page=1.'
-          : 'No discover candidates found yet. Play more music first, or pass artist/genres seeds.',
+          ? 'No more discover candidates in this snapshot. Change artist/keywords or go back to page=1.'
+          : 'No discover candidates found yet. Play more music first, or pass artist/keywords seeds.',
       });
     }
 
-    return textResult({
-      ...response,
-      tip: response.hasMore
-        ? 'Use add_song() or play_song() to pick, then call discover(page=2) for more candidates.'
-        : 'Use add_song() or play_song() to pick from these candidates.',
-    });
+    return textResult(response);
   } catch (err) {
     return errorResult(`Discover failed: ${(err as Error).message}`);
   }
@@ -335,31 +330,5 @@ export async function handleUpdatePersona(args: { taste: string }): Promise<Tool
     });
   } catch (err) {
     return errorResult(`Update persona failed: ${(err as Error).message}`);
-  }
-}
-
-export async function handleSetPersonaTraits(args: {
-  exploration: number;
-  variety: number;
-  loyalty: number;
-}): Promise<ToolResult> {
-  try {
-    const taste = getTasteEngine();
-    if (!taste) return errorResult('Taste engine not initialized.');
-
-    const traits = taste.saveTraits(args);
-    invalidateDiscoverCache();
-    getWebServer()?.broadcastPersona();
-
-    return textResult({
-      updated: true,
-      persona: {
-        traits,
-        taste: taste.getTasteText(),
-      },
-      message: 'Manual persona traits updated.',
-    });
-  } catch (err) {
-    return errorResult(`Set persona traits failed: ${(err as Error).message}`);
   }
 }

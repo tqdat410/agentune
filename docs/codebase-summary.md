@@ -7,26 +7,23 @@
 - Agents talk to the daemon through MCP.
 - The daemon owns queue state, playback, listening history, and the browser dashboard.
 - `mpv` handles audio output.
-- SQLite stores tracks, play events, provider cache data, persisted persona taste text, and persisted manual persona traits.
-- Runtime ports live in `${SBOTIFY_DATA_DIR || ~/.sbotify}/config.json`.
+- SQLite stores tracks, play events, provider cache data, and persisted persona taste text.
+- Runtime ports, default volume, and fixed discover ranking live in `${SBOTIFY_DATA_DIR || ~/.sbotify}/config.json`.
 
 The active state redesign is agent-first:
 
 ```ts
 {
   context: { hour, period, dayOfWeek },
-  persona: {
-    traits: { exploration, variety, loyalty },
-    taste: string
-  },
+  persona: { Preferences: string },
   history: {
     recent: [...],
-    stats: { topArtists, topTags }
+    stats: { topArtists, topKeywords }
   }
 }
 ```
 
-`discover()` now returns a flat paginated list of Apple candidates. The server builds Apple-only batches, deduplicates them, soft-ranks them from history plus stored manual persona traits, caches the ranked snapshot, then returns the requested page.
+`discover()` now returns a flat paginated list of Apple candidates. The server builds Apple-only batches, deduplicates them, soft-ranks them from history plus fixed runtime config weights, caches the ranked snapshot, then returns the requested page.
 
 ## Project Structure
 
@@ -109,7 +106,6 @@ Current responsibilities:
 
 - persist `tracks`, `plays`, `provider_cache`, and `session_state`
 - store free-text persona taste in `session_state.persona_taste_text`
-- store manual persona traits in `session_state.persona_traits_json`
 - migrate old databases to the trimmed schema without legacy session/preference columns
 - expose manual cleanup operations for history, provider cache, and full reset
 - expose aggregate queries used by the taste engine and discover pipeline:
@@ -122,7 +118,7 @@ Current responsibilities:
 Important details:
 
 - `normalizeTrackId(artist, title)` is the canonical track key.
-- The constructor migrates older DBs to schema version 2 and removes `preferences`, `similar_json`, `lane_id`, and older session-state columns.
+- The constructor migrates older DBs to schema version 3 and removes `preferences`, `similar_json`, `lane_id`, `persona_traits_json`, and older session-state columns.
 - Cleanup actions run `wal_checkpoint(TRUNCATE)`, `VACUUM`, and `PRAGMA optimize`.
 
 ### Taste Engine
@@ -132,14 +128,11 @@ File: `src/taste/taste-engine.ts`
 Current responsibilities:
 
 - expose current time context
-- read and persist manual persona traits
 - read and persist free-text taste text
 - package the agent-facing session summary for MCP and the dashboard
 
 Important details:
 
-- Traits default to `{ exploration: 0.5, variety: 0.5, loyalty: 0.5 }`.
-- Traits stay fixed until the agent or dashboard updates them.
 - The engine does not run a feedback scoring loop.
 - There is no active weighted taste runtime outside the returned summary.
 
@@ -155,19 +148,19 @@ Files:
 
 Current responsibilities:
 
-- build Apple candidate batches from explicit `artist` / `genres` seeds
-- fall back to top 3 history artists and top 3 history tags when no seeds are provided
+- build Apple candidate batches from explicit `artist` / `keywords` seeds
+- fall back to top 3 history artists and top 3 history keywords when no seeds are provided
 - deduplicate repeated `artist + title` pairs, interleave artists, and break adjacent same-artist clusters after ranking
-- soft-rank candidates from top artists, top tags, per-track completion, skip rate, and recent-repeat penalty
+- soft-rank candidates from top artists, top stored track tags, per-track completion, skip rate, and recent-repeat penalty
 - cache ranked snapshots for pagination
 
 Important details:
 
-- Public output is flat and paginated: `{ page, limit, hasMore, candidates[] }`.
+- Public output is flat and paginated: `{ page, limit, hasMore, candidates[], nextGuide }`.
 - `DiscoverBatchBuilder` only calls Apple artist-track and Apple genre search APIs; public candidates always return `provider: "apple"`.
 - Internal Apple IDs stay on internal candidates only; `toPublicCandidate()` strips them before the MCP response.
-- The pagination cache is in-memory, keyed by normalized `{ artist, genres }`, uses a 5 minute TTL, keeps up to 10 snapshots, and does not cache empty results.
-- If no explicit seeds exist and history has no top artists or tags, `discover()` returns an empty candidate list.
+- The pagination cache is in-memory, keyed by normalized `{ artist, keywords }`, uses a 5 minute TTL, keeps up to 10 snapshots, and does not cache empty results.
+- If no explicit seeds exist and history has no top artists or keywords, `discover()` returns an empty candidate list.
 
 ## MCP Surface
 
@@ -180,14 +173,11 @@ State-related MCP tools:
 
 - `get_session_state()`
   - returns `context`, `persona`, and `history`
-- `discover(page?, limit?, artist?, genres?, mode?, intent?)`
-  - returns `{ page, limit, hasMore, candidates }`
+- `discover(page?, limit?, artist?, keywords?, mode?, intent?)`
+  - returns `{ page, limit, hasMore, candidates, nextGuide }`
 - `update_persona({ taste })`
   - persists free-text taste text
   - empty string is allowed to clear it
-- `set_persona_traits({ exploration, variety, loyalty })`
-  - persists the full manual trait object
-  - invalidates discover pagination snapshots
 
 Playback-related MCP tools:
 
@@ -204,11 +194,10 @@ Playback-related MCP tools:
 Important details:
 
 - `play_song` and `add_song` are Apple-first for canonical metadata.
-- `discover()` returns a flat page plus a tip to call `add_song()` / `play_song()`, and to use `discover(page=2)` when `hasMore` is true.
+- `discover()` returns a flat page plus `nextGuide`, which tells the agent whether to keep paging or improve `artist` / `keywords`.
 - `mode` and `intent` remain in the MCP schema for compatibility, but the current discover pipeline ignores them.
 - Successful `play_song()` and `add_song()` clear the discover pagination cache.
 - `update_persona()` persists taste text and broadcasts persona updates, but does not clear the discover pagination cache.
-- `set_persona_traits()` persists traits, broadcasts persona updates, and clears the discover pagination cache.
 - Discover ranking is internal only; the public MCP response does not expose scores.
 
 ## Queue and Playback
@@ -259,21 +248,20 @@ Current behavior:
 
 - `StateBroadcaster` publishes playback snapshots: playing, title, artist, thumbnail, position, duration, volume, muted, queue.
 - Persona data is fetched separately from `/api/persona`.
-- Persona changes are broadcast separately over WebSocket as `{ type: "persona", data: { traits, taste } }`.
+- Persona changes are broadcast separately over WebSocket as `{ type: "persona", data: { taste } }`.
 - The dashboard includes:
   - now-playing card
   - queue preview
   - volume and mute controls
   - persona textarea
-  - editable manual trait sliders
   - database stats
   - cleanup buttons with 2-step confirm
 
 Important details:
 
-- Runtime config file now stores exact `dashboardPort` and `daemonPort`, with no fallback ports.
+- Runtime config file now stores exact `dashboardPort`, `daemonPort`, `defaultVolume`, and fixed `discoverRanking` weights.
 - The old dashboard context badge is gone.
-- `POST /api/persona` accepts `taste`, `traits`, or both in one validated payload.
+- `POST /api/persona` accepts only `taste`.
 - `public/app.js` loads initial playback and persona state with HTTP, then listens for live `state` and `persona` messages.
 - Database cleanup actions stop playback, clear runtime queue state, then mutate SQLite.
 

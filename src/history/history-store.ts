@@ -4,8 +4,7 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 import { getHistoryDbPath } from '../runtime/runtime-data-paths.js';
-import type { PersonaTraits } from '../taste/taste-engine.js';
-import { normalizeTrackId, DEFAULT_PERSONA_TRAITS_JSON } from './history-schema.js';
+import { normalizeTrackId } from './history-schema.js';
 import {
   clearHistoryData,
   clearProviderCacheData,
@@ -56,8 +55,6 @@ export interface BatchTrackStats {
   skipRate: number;
   hoursSinceLastPlay: number;
 }
-
-const DEFAULT_PERSONA_TRAITS: PersonaTraits = JSON.parse(DEFAULT_PERSONA_TRAITS_JSON) as PersonaTraits;
 
 export class HistoryStore {
   private readonly db: Database.Database;
@@ -343,30 +340,6 @@ export class HistoryStore {
     `).run(text);
   }
 
-  getPersonaTraits(): PersonaTraits {
-    const row = this.db.prepare('SELECT persona_traits_json FROM session_state WHERE id = 1')
-      .get() as { persona_traits_json: string } | undefined;
-
-    if (!row?.persona_traits_json) {
-      return { ...DEFAULT_PERSONA_TRAITS };
-    }
-
-    try {
-      return parsePersonaTraits(row.persona_traits_json);
-    } catch {
-      console.error('[sbotify] Corrupted persona_traits_json — using neutral defaults.');
-      return { ...DEFAULT_PERSONA_TRAITS };
-    }
-  }
-
-  savePersonaTraits(traits: PersonaTraits): void {
-    const normalized = validatePersonaTraits(traits);
-    this.db.prepare(`
-      INSERT INTO session_state (id, persona_traits_json) VALUES (1, ?)
-      ON CONFLICT(id) DO UPDATE SET persona_traits_json = excluded.persona_traits_json
-    `).run(JSON.stringify(normalized));
-  }
-
   getDatabaseStats(): HistoryDatabaseStats {
     return getHistoryDatabaseStats(this.db, this.dbPath);
   }
@@ -407,30 +380,6 @@ function parseJsonArray(raw: string): string[] {
   } catch {
     return [];
   }
-}
-
-function parsePersonaTraits(raw: string): PersonaTraits {
-  return validatePersonaTraits(JSON.parse(raw) as unknown);
-}
-
-function validatePersonaTraits(raw: unknown): PersonaTraits {
-  if (!raw || typeof raw !== 'object') {
-    throw new Error('Persona traits must be an object.');
-  }
-
-  const traits = raw as Record<string, unknown>;
-  return {
-    exploration: validateTraitNumber(traits.exploration, 'exploration'),
-    variety: validateTraitNumber(traits.variety, 'variety'),
-    loyalty: validateTraitNumber(traits.loyalty, 'loyalty'),
-  };
-}
-
-function validateTraitNumber(value: unknown, field: keyof PersonaTraits): number {
-  if (typeof value !== 'number' || Number.isNaN(value) || value < 0 || value > 1) {
-    throw new Error(`persona traits.${field} must be a number between 0 and 1.`);
-  }
-  return value;
 }
 
 let historyStore: HistoryStore | null = null;
