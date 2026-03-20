@@ -99,18 +99,21 @@ if (args.includes('--daemon')) {
   startDaemon().catch((err) => { console.error('[sbotify] Fatal:', err); process.exit(1); });
 } else if (args[0] === 'status') {
   import('./cli/status-command.js').then(({ runStatus }) => runStatus());
+} else if (args[0] === 'start') {
+  import('./cli/start-command.js').then(({ runStart }) => runStart());
 } else if (args[0] === 'stop') {
   import('./cli/stop-command.js').then(({ runStop }) => runStop());
 } else {
-  // Default: proxy mode — auto-start daemon, relay stdio↔HTTP
+  // Default: proxy mode — relay stdio↔HTTP and optionally auto-start daemon.
   startProxyMode().catch((err) => { console.error('[sbotify] Fatal:', err); process.exit(1); });
 }
 
 async function startProxyMode() {
   const { ensureDaemon } = await import('./proxy/daemon-launcher.js');
   const { startProxy } = await import('./proxy/stdio-proxy.js');
+  const runtimeConfig = loadRuntimeConfig();
 
-  const { port } = await ensureDaemon();
+  const { port } = await ensureDaemon({ allowSpawn: runtimeConfig.autoStartDaemon });
   console.error(`[sbotify] Connected to daemon on port ${port}`);
   await startProxy(port);
 }

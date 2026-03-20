@@ -199,7 +199,7 @@ test('WebServer stop endpoint schedules explicit daemon shutdown', async () => {
 
     assert.equal(response.status, 200);
     assert.equal(payload.stopped, true);
-    assert.match(payload.message, /dashboard will stay offline/i);
+    assert.match(payload.message, /sbotify start/i);
 
     await new Promise((resolve) => setTimeout(resolve, 150));
     assert.deepEqual(stopReasons, ['dashboard stop']);

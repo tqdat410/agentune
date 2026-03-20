@@ -280,7 +280,7 @@ export class WebServer {
 
     sendJson(response, {
       stopped: true,
-      message: 'Daemon stop requested. This dashboard will stay offline until you start a new coding session.',
+      message: 'Daemon stop requested. Start it again with "sbotify start", or open a new coding session if auto-start is enabled.',
     });
     setTimeout(() => {
       void Promise.resolve(this.onStopDaemon?.('dashboard stop'));

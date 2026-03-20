@@ -11,6 +11,7 @@ export interface RuntimeConfig {
   dashboardPort: number;
   daemonPort: number;
   defaultVolume: number;
+  autoStartDaemon: boolean;
   discoverRanking: DiscoverRankingConfig;
 }
 
@@ -24,6 +25,7 @@ export const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
   dashboardPort: 3737,
   daemonPort: 3747,
   defaultVolume: 80,
+  autoStartDaemon: true,
   discoverRanking: { ...DEFAULT_DISCOVER_RANKING_CONFIG },
 };
 
@@ -36,14 +38,15 @@ export function loadRuntimeConfig(): RuntimeConfig {
 
   const configPath = getRuntimeConfigPath();
   if (!fs.existsSync(configPath)) {
-    fs.writeFileSync(configPath, `${JSON.stringify(DEFAULT_RUNTIME_CONFIG, null, 2)}\n`, 'utf8');
+    writeRuntimeConfig(configPath, DEFAULT_RUNTIME_CONFIG);
     runtimeConfigCache = { ...DEFAULT_RUNTIME_CONFIG };
     return runtimeConfigCache;
   }
 
+  const rawConfig = fs.readFileSync(configPath, 'utf8');
   let parsed: unknown;
   try {
-    parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    parsed = JSON.parse(rawConfig);
   } catch (error) {
     throw new Error(`Invalid runtime config at ${configPath}: ${(error as Error).message}`);
   }
@@ -57,8 +60,16 @@ export function loadRuntimeConfig(): RuntimeConfig {
     dashboardPort: validatePort(config.dashboardPort ?? DEFAULT_RUNTIME_CONFIG.dashboardPort, 'dashboardPort'),
     daemonPort: validatePort(config.daemonPort ?? DEFAULT_RUNTIME_CONFIG.daemonPort, 'daemonPort'),
     defaultVolume: validateVolume(config.defaultVolume ?? DEFAULT_RUNTIME_CONFIG.defaultVolume, 'defaultVolume'),
+    autoStartDaemon: validateBoolean(
+      config.autoStartDaemon ?? DEFAULT_RUNTIME_CONFIG.autoStartDaemon,
+      'autoStartDaemon',
+    ),
     discoverRanking: validateDiscoverRanking(config.discoverRanking),
   };
+
+  if (shouldWriteRuntimeConfig(rawConfig, runtimeConfigCache)) {
+    writeRuntimeConfig(configPath, runtimeConfigCache);
+  }
   return runtimeConfigCache;
 }
 
@@ -78,6 +89,13 @@ function validateVolume(value: unknown, key: 'defaultVolume'): number {
     throw new Error(`Invalid runtime config: ${key} must be an integer between 0 and 100.`);
   }
   return value as number;
+}
+
+function validateBoolean(value: unknown, key: 'autoStartDaemon'): boolean {
+  if (typeof value !== 'boolean') {
+    throw new Error(`Invalid runtime config: ${key} must be a boolean.`);
+  }
+  return value;
 }
 
 function validateDiscoverRanking(value: unknown): DiscoverRankingConfig {
@@ -110,4 +128,12 @@ function validateUnitInterval(value: unknown, key: string): number {
     throw new Error(`Invalid runtime config: ${key} must be a number between 0 and 1.`);
   }
   return value;
+}
+
+function writeRuntimeConfig(configPath: string, config: RuntimeConfig): void {
+  fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+}
+
+function shouldWriteRuntimeConfig(rawConfig: string, config: RuntimeConfig): boolean {
+  return rawConfig !== `${JSON.stringify(config, null, 2)}\n`;
 }

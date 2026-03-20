@@ -30,6 +30,7 @@ test('loadRuntimeConfig creates default config when missing', () => {
       dashboardPort: 3737,
       daemonPort: 3747,
       defaultVolume: 80,
+      autoStartDaemon: true,
       discoverRanking: { exploration: 0.35, variety: 0.55, loyalty: 0.65 },
     });
     assert.equal(fs.existsSync(configPath), true);
@@ -59,11 +60,33 @@ test('loadRuntimeConfig rejects invalid port values', () => {
   }
 });
 
-test('loadRuntimeConfig merges missing config fields and rejects invalid ranking values', () => {
+test('loadRuntimeConfig rejects invalid auto-start values', () => {
   const previous = process.env.SBOTIFY_DATA_DIR;
   const dataDir = createTempDataDir();
   process.env.SBOTIFY_DATA_DIR = dataDir;
   fs.writeFileSync(path.join(dataDir, 'config.json'), JSON.stringify({
+    dashboardPort: 3737,
+    daemonPort: 3747,
+    autoStartDaemon: 'yes',
+  }));
+  resetRuntimeConfigCache();
+
+  try {
+    assert.throws(() => loadRuntimeConfig(), /autoStartDaemon must be a boolean/i);
+  } finally {
+    if (previous === undefined) delete process.env.SBOTIFY_DATA_DIR;
+    else process.env.SBOTIFY_DATA_DIR = previous;
+    resetRuntimeConfigCache();
+    cleanupDataDir(dataDir);
+  }
+});
+
+test('loadRuntimeConfig merges missing config fields, writes them back, and rejects invalid ranking values', () => {
+  const previous = process.env.SBOTIFY_DATA_DIR;
+  const dataDir = createTempDataDir();
+  const configPath = path.join(dataDir, 'config.json');
+  process.env.SBOTIFY_DATA_DIR = dataDir;
+  fs.writeFileSync(configPath, JSON.stringify({
     dashboardPort: 3838,
     daemonPort: 3848,
     discoverRanking: { exploration: 2 },
@@ -72,7 +95,7 @@ test('loadRuntimeConfig merges missing config fields and rejects invalid ranking
 
   try {
     assert.throws(() => loadRuntimeConfig(), /discoverRanking\.exploration must be a number between 0 and 1/i);
-    fs.writeFileSync(path.join(dataDir, 'config.json'), JSON.stringify({
+    fs.writeFileSync(configPath, JSON.stringify({
       dashboardPort: 3838,
       daemonPort: 3848,
       defaultVolume: 60,
@@ -80,12 +103,15 @@ test('loadRuntimeConfig merges missing config fields and rejects invalid ranking
     }));
     resetRuntimeConfigCache();
 
-    assert.deepEqual(loadRuntimeConfig(), {
+    const config = loadRuntimeConfig();
+    assert.deepEqual(config, {
       dashboardPort: 3838,
       daemonPort: 3848,
       defaultVolume: 60,
+      autoStartDaemon: true,
       discoverRanking: { exploration: 0.35, variety: 0.75, loyalty: 0.65 },
     });
+    assert.deepEqual(JSON.parse(fs.readFileSync(configPath, 'utf8')), config);
   } finally {
     if (previous === undefined) delete process.env.SBOTIFY_DATA_DIR;
     else process.env.SBOTIFY_DATA_DIR = previous;

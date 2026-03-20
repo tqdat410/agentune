@@ -198,7 +198,7 @@ function applyStoppedState(message) {
   }
   disableControlsAfterStop();
   elements.title.textContent = 'Daemon stopped';
-  elements.artist.textContent = 'Open a new coding session to start sbotify again.';
+  elements.artist.textContent = 'Run "sbotify start", or open a new coding session if auto-start is enabled.';
   elements.state.textContent = 'Stopped';
   elements.currentTime.textContent = '0:00';
   elements.duration.textContent = '0:00';

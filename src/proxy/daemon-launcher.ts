@@ -1,5 +1,4 @@
-// Auto-start daemon if not running, wait for health check
-// Spawns the daemon process detached and polls until healthy
+// Daemon discovery + optional auto-start for proxy/manual CLI flows.
 
 import { spawn } from 'child_process';
 import { closeSync, openSync } from 'fs';
@@ -10,25 +9,50 @@ import { getDaemonLogPath } from '../runtime/runtime-data-paths.js';
 const HEALTH_POLL_INTERVAL = 200; // ms
 const HEALTH_POLL_TIMEOUT = 10_000; // ms
 
-/** Ensure daemon is running; start it if not. Returns port on success. */
-export async function ensureDaemon(): Promise<{ port: number }> {
-  const { daemonPort } = loadRuntimeConfig();
-
-  // Check if already running via PID file + health check
-  const check = isDaemonRunning();
-  if (check.running && check.info) {
-    const healthy = await checkHealth(check.info.port);
-    if (healthy) return { port: check.info.port };
-  }
-
-  // Spawn detached daemon
-  spawnDaemon();
-
-  // Wait for health
-  return await waitForHealth(daemonPort);
+export interface EnsureDaemonOptions {
+  allowSpawn?: boolean;
 }
 
-function spawnDaemon(): void {
+export interface EnsureDaemonResult {
+  port: number;
+  started: boolean;
+}
+
+interface DaemonLauncherDependencies {
+  checkHealth: (port: number) => Promise<boolean>;
+  getDaemonLogPath: typeof getDaemonLogPath;
+  isDaemonRunning: typeof isDaemonRunning;
+  loadRuntimeConfig: typeof loadRuntimeConfig;
+  now: () => number;
+  readPidFile: typeof readPidFile;
+  sleep: (ms: number) => Promise<void>;
+  spawnDaemon: () => void;
+}
+
+/** Ensure daemon is running; start it if allowed and missing. */
+export async function ensureDaemon(
+  options?: EnsureDaemonOptions,
+  dependencies: DaemonLauncherDependencies = createDaemonLauncherDependencies(),
+): Promise<EnsureDaemonResult> {
+  const allowSpawn = options?.allowSpawn ?? true;
+  const { daemonPort } = dependencies.loadRuntimeConfig();
+
+  // Check if already running via PID file + health check
+  const check = dependencies.isDaemonRunning();
+  if (check.running && check.info) {
+    const healthy = await dependencies.checkHealth(check.info.port);
+    if (healthy) return { port: check.info.port, started: false };
+  }
+
+  if (!allowSpawn) {
+    throw new Error('Daemon is not running. Start it with "sbotify start".');
+  }
+
+  dependencies.spawnDaemon();
+  return await waitForHealth(daemonPort, dependencies);
+}
+
+function spawnDetachedDaemon(): void {
   const entryPoint = process.argv[1]; // dist/index.js
   const logPath = getDaemonLogPath();
   const logFd = openSync(logPath, 'w');
@@ -44,15 +68,18 @@ function spawnDaemon(): void {
   closeSync(logFd);
 }
 
-async function waitForHealth(expectedPort: number): Promise<{ port: number }> {
-  const deadline = Date.now() + HEALTH_POLL_TIMEOUT;
-  while (Date.now() < deadline) {
-    const info = readPidFile();
+async function waitForHealth(
+  expectedPort: number,
+  dependencies: DaemonLauncherDependencies,
+): Promise<EnsureDaemonResult> {
+  const deadline = dependencies.now() + HEALTH_POLL_TIMEOUT;
+  while (dependencies.now() < deadline) {
+    const info = dependencies.readPidFile();
     const port = info?.port ?? expectedPort;
-    if (await checkHealth(port)) return { port };
-    await new Promise((r) => setTimeout(r, HEALTH_POLL_INTERVAL));
+    if (await dependencies.checkHealth(port)) return { port, started: true };
+    await dependencies.sleep(HEALTH_POLL_INTERVAL);
   }
-  throw new Error(`Daemon failed to start within 10s. Check ${getDaemonLogPath()}`);
+  throw new Error(`Daemon failed to start within 10s. Check ${dependencies.getDaemonLogPath()}`);
 }
 
 async function checkHealth(port: number): Promise<boolean> {
@@ -64,4 +91,17 @@ async function checkHealth(port: number): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function createDaemonLauncherDependencies(): DaemonLauncherDependencies {
+  return {
+    checkHealth,
+    getDaemonLogPath,
+    isDaemonRunning,
+    loadRuntimeConfig,
+    now: () => Date.now(),
+    readPidFile,
+    sleep: async (ms) => await new Promise((resolve) => setTimeout(resolve, ms)),
+    spawnDaemon: spawnDetachedDaemon,
+  };
 }
