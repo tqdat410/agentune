@@ -25,13 +25,16 @@ Agent / MCP Client
 ### Proxy Mode
 
 - `sbotify` without args starts the lightweight stdio proxy.
-- The proxy auto-starts the daemon when needed.
+- The proxy reads `autoStartDaemon` from `${SBOTIFY_DATA_DIR || ~/.sbotify}/config.json`.
+- If `autoStartDaemon` is `true`, the proxy auto-starts the daemon when needed.
+- If `autoStartDaemon` is `false`, the proxy only connects to an already-running daemon and fails fast with a manual-start hint if none exists.
 - The proxy does not own queue, mpv, or database state.
 - Closing the proxy session does not stop the daemon.
 
 ### Daemon Mode
 
 - `sbotify --daemon` starts the long-lived process.
+- `sbotify start` starts the same daemon in the background and exits after readiness succeeds.
 - Runtime config lives at `${SBOTIFY_DATA_DIR || ~/.sbotify}/config.json`.
 - The daemon exposes:
   - `/mcp` on the configured daemon port for MCP traffic

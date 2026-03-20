@@ -8,7 +8,7 @@
 - The daemon owns queue state, playback, listening history, and the browser dashboard.
 - `mpv` handles audio output.
 - SQLite stores tracks, play events, provider cache data, and persisted persona taste text.
-- Runtime ports, default volume, and fixed discover ranking live in `${SBOTIFY_DATA_DIR || ~/.sbotify}/config.json`.
+- Runtime ports, default volume, auto-start policy, and fixed discover ranking live in `${SBOTIFY_DATA_DIR || ~/.sbotify}/config.json`.
 - The daemon is explicit-lifecycle: no idle auto-shutdown, stop only via CLI or dashboard.
 
 The active state redesign is agent-first:
@@ -37,6 +37,7 @@ sbotify/
 │   │   ├── node-mpv-bootstrap.ts
 │   │   └── platform-ipc-path.ts
 │   ├── cli/
+│   │   ├── start-command.ts
 │   │   ├── status-command.ts
 │   │   └── stop-command.ts
 │   ├── daemon/
@@ -266,6 +267,7 @@ Current behavior:
 Important details:
 
 - Runtime config file now stores exact `dashboardPort`, `daemonPort`, `defaultVolume`, and fixed `discoverRanking` weights.
+- Runtime config also stores `autoStartDaemon`, which controls whether proxy sessions may auto-spawn the daemon.
 - The daemon is not tied to the proxy terminal anymore; explicit stop only.
 - The old dashboard context badge is gone.
 - `POST /api/persona` accepts only `taste`.

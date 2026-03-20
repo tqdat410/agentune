@@ -48,9 +48,10 @@ sbotify
 # Listens on stdio for MCP (agent) + HTTP on the configured dashboard port (default: localhost:3737)
 ```
 
-Stop the daemon explicitly when needed:
+Control the daemon explicitly when needed:
 
 ```bash
+sbotify start
 sbotify stop
 ```
 
@@ -104,6 +105,7 @@ On first run, sbotify creates `${SBOTIFY_DATA_DIR || ~/.sbotify}/config.json`:
   "dashboardPort": 3737,
   "daemonPort": 3747,
   "defaultVolume": 80,
+  "autoStartDaemon": true,
   "discoverRanking": {
     "exploration": 0.35,
     "variety": 0.55,
@@ -112,7 +114,13 @@ On first run, sbotify creates `${SBOTIFY_DATA_DIR || ~/.sbotify}/config.json`:
 }
 ```
 
-Both ports are exact. If either port is already in use, startup fails instead of falling back to another port. `defaultVolume` sets the initial mpv volume on daemon startup, and `discoverRanking` provides the fixed reranking weights used by `discover()`.
+Both ports are exact. If either port is already in use, startup fails instead of falling back to another port. `defaultVolume` sets the initial mpv volume on daemon startup, `autoStartDaemon` controls whether `sbotify` auto-spawns the daemon when a coding session connects, and `discoverRanking` provides the fixed reranking weights used by `discover()`.
+
+If `autoStartDaemon` is `false`, start the daemon yourself before connecting:
+
+```bash
+sbotify start
+```
 
 The daemon stays alive after the coding session closes. It stops only when you run `sbotify stop` or click `Stop daemon` in the dashboard.
 

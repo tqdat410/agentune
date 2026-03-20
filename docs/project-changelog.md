@@ -1,5 +1,32 @@
 # Project Changelog
 
+## 2026-03-20 (Optional Auto-Start + Manual Start Command)
+
+### Daemon Startup Control
+- Extended `${SBOTIFY_DATA_DIR || ~/.sbotify}/config.json` with `autoStartDaemon`
+- Default remains `true`, so existing users keep the same proxy auto-start behavior
+- Runtime config loading now validates `autoStartDaemon` as a boolean
+- Runtime config loading now writes normalized defaults back to disk when older config files are missing new fields
+
+### CLI + Proxy Behavior
+- Added `src/cli/start-command.ts` for `sbotify start`
+- `sbotify start` now ensures the daemon is running in the background and exits after readiness succeeds
+- Updated `src/index.ts` so proxy mode reads `autoStartDaemon` before deciding whether it may spawn the daemon
+- Updated `src/proxy/daemon-launcher.ts` so launcher flows now support:
+  - connect to a healthy running daemon without spawning
+  - fail fast with a manual-start message when spawning is disabled
+  - report whether the daemon was newly started or already running
+
+### Dashboard Copy + Tests + Docs
+- Updated dashboard stop messaging to point users to `sbotify start` while still mentioning new-session auto-start when enabled
+- Added launcher coverage in `src/proxy/daemon-launcher.test.ts`
+- Updated runtime config tests to cover `autoStartDaemon` defaults, validation, and config write-back
+- Synced README, system architecture, codebase summary, roadmap, and changelog to the optional auto-start flow
+
+### Validation
+- `npm run build`: passed
+- `npm test`: 92 passed, 0 failed
+
 ## 2026-03-20 (Hide Windows MPV Console Window)
 
 ### Windows Playback Startup

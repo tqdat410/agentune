@@ -13,6 +13,7 @@
 - config-driven discover ranking: complete
 - agent-facing discover guidance cleanup: complete
 - explicit daemon lifecycle + dashboard stop: complete
+- optional daemon auto-start + manual `sbotify start`: complete
 - discover rewrite automated validation: complete
 - daemon/MCP end-to-end smoke record: pending
 
@@ -20,7 +21,7 @@ Last validated:
 
 - `2026-03-20`
 - `npm run build`: passed
-- `npm test`: 86 passed, 0 failed
+- `npm test`: 92 passed, 0 failed
 - built-handler smoke: `discover({ artist: "Nils Frahm", limit: 1 })` returned a paginated Apple candidate
 
 ## Completed Milestones
