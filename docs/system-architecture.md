@@ -27,6 +27,7 @@ Agent / MCP Client
 - `sbotify` without args starts the lightweight stdio proxy.
 - The proxy auto-starts the daemon when needed.
 - The proxy does not own queue, mpv, or database state.
+- Closing the proxy session does not stop the daemon.
 
 ### Daemon Mode
 
@@ -39,6 +40,7 @@ Agent / MCP Client
   - the dashboard on `http://127.0.0.1:{dashboardPort}` from config
 - Both ports are exact; no automatic fallback is used anymore.
 - One daemon means one shared queue, one shared history DB, and one shared `mpv` process.
+- The daemon stays alive until an explicit stop request arrives from `sbotify stop` or the dashboard stop button.
 
 ## Core Components
 
@@ -181,6 +183,7 @@ Endpoints:
 - `GET /api/persona`
 - `POST /api/persona`
 - `POST /api/volume`
+- `POST /api/daemon/stop`
 - `GET /api/database/stats`
 - `POST /api/database/clear-history`
 - `POST /api/database/clear-provider-cache`
@@ -195,6 +198,7 @@ Dashboard features:
 - persona textarea
 - database stats
 - manual cleanup buttons for history, provider cache, and full reset
+- explicit daemon stop button
 
 Important notes:
 
@@ -203,6 +207,8 @@ Important notes:
 - Persona changes are broadcast to connected clients over WebSocket.
 - Dashboard taste edits can arrive through WebSocket or `POST /api/persona`.
 - Cleanup actions stop playback, clear runtime queue state, invalidate discover cache, then mutate SQLite.
+- `POST /api/daemon/stop` returns success first, then schedules the same shutdown path used by `sbotify stop`.
+- After a dashboard stop, the page stops reconnecting until sbotify is started again.
 
 ## Main Flows
 

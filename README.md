@@ -8,7 +8,7 @@ sbotify is a Model Context Protocol (MCP) server that enables coding agents (Cla
 
 - **Agent-driven music control**: Taste-aware `discover -> play_song/add_song -> feedback` flow via MCP
 - **Apple-only discover pipeline**: flat, paginated Apple candidates with optional `artist` / `keywords` seeds
-- **Browser dashboard**: Real-time now-playing info, volume slider, and manual database cleanup on the configured dashboard port
+- **Browser dashboard**: Real-time now-playing info, volume slider, manual database cleanup, and an explicit daemon stop button on the configured dashboard port
 - **Headless playback**: Audio plays independently via mpv (no browser needed)
 - **Cross-platform**: Works on Windows, macOS, Linux
 - **Zero-key resolver**: Apple Search API for canonical catalog lookup, yt-dlp for playback resolution
@@ -46,6 +46,12 @@ npm install -g sbotify
 ```bash
 sbotify
 # Listens on stdio for MCP (agent) + HTTP on the configured dashboard port (default: localhost:3737)
+```
+
+Stop the daemon explicitly when needed:
+
+```bash
+sbotify stop
 ```
 
 ### MCP Configuration (Claude Code)
@@ -87,6 +93,7 @@ Open the configured dashboard URL (default `http://localhost:3737`) in your brow
 - Live queue preview
 - Persona taste editor
 - Database stats + manual cleanup actions
+- Explicit `Stop daemon` control
 
 ### Runtime Config
 
@@ -106,6 +113,8 @@ On first run, sbotify creates `${SBOTIFY_DATA_DIR || ~/.sbotify}/config.json`:
 ```
 
 Both ports are exact. If either port is already in use, startup fails instead of falling back to another port. `defaultVolume` sets the initial mpv volume on daemon startup, and `discoverRanking` provides the fixed reranking weights used by `discover()`.
+
+The daemon stays alive after the coding session closes. It stops only when you run `sbotify stop` or click `Stop daemon` in the dashboard.
 
 ## Architecture Overview
 

@@ -9,6 +9,7 @@
 - `mpv` handles audio output.
 - SQLite stores tracks, play events, provider cache data, and persisted persona taste text.
 - Runtime ports, default volume, and fixed discover ranking live in `${SBOTIFY_DATA_DIR || ~/.sbotify}/config.json`.
+- The daemon is explicit-lifecycle: no idle auto-shutdown, stop only via CLI or dashboard.
 
 The active state redesign is agent-first:
 
@@ -33,6 +34,7 @@ sbotify/
 │   ├── index.ts
 │   ├── audio/
 │   │   ├── mpv-controller.ts
+│   │   ├── node-mpv-bootstrap.ts
 │   │   └── platform-ipc-path.ts
 │   ├── cli/
 │   │   ├── status-command.ts
@@ -207,6 +209,7 @@ Files:
 - `src/queue/queue-manager.ts`
 - `src/queue/queue-playback-controller.ts`
 - `src/audio/mpv-controller.ts`
+- `src/audio/node-mpv-bootstrap.ts`
 
 Current responsibilities:
 
@@ -220,6 +223,7 @@ Important details:
 - Playback feedback remains as raw history rows; there is no secondary taste-update path.
 - The controller still enriches track tags from Apple after playback begins.
 - The next queued track can be prefetched for smoother transitions.
+- On Windows, `node-mpv` is bootstrapped through a small spawn patch so managed `mpv` children start hidden, and the launcher prefers `mpv.exe` when available to avoid blank console windows.
 
 ## Web Dashboard
 
@@ -238,6 +242,7 @@ Current HTTP and WebSocket surface:
 - `GET /api/persona`
 - `POST /api/persona`
 - `POST /api/volume`
+- `POST /api/daemon/stop`
 - `GET /api/database/stats`
 - `POST /api/database/clear-history`
 - `POST /api/database/clear-provider-cache`
@@ -251,15 +256,17 @@ Current behavior:
 - Persona changes are broadcast separately over WebSocket as `{ type: "persona", data: { taste } }`.
 - The dashboard includes:
   - now-playing card
-  - queue preview
-  - volume and mute controls
-  - persona textarea
-  - database stats
-  - cleanup buttons with 2-step confirm
+- queue preview
+- volume and mute controls
+- persona textarea
+- database stats
+- cleanup buttons with 2-step confirm
+- explicit daemon stop button with 2-step confirm
 
 Important details:
 
 - Runtime config file now stores exact `dashboardPort`, `daemonPort`, `defaultVolume`, and fixed `discoverRanking` weights.
+- The daemon is not tied to the proxy terminal anymore; explicit stop only.
 - The old dashboard context badge is gone.
 - `POST /api/persona` accepts only `taste`.
 - `public/app.js` loads initial playback and persona state with HTTP, then listens for live `state` and `persona` messages.

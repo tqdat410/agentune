@@ -1,5 +1,43 @@
 # Project Changelog
 
+## 2026-03-20 (Hide Windows MPV Console Window)
+
+### Windows Playback Startup
+- Updated `src/audio/mpv-controller.ts` and added `src/audio/node-mpv-bootstrap.ts`
+- Windows `mpv` startup now prefers `mpv.exe` over the console wrapper when available
+- `node-mpv` is now loaded through a Windows-specific spawn patch so its child `mpv` process starts with `windowsHide: true`
+- Added `--terminal=no` to the managed `mpv` args to suppress terminal output noise
+- Result: the blank Windows console window should no longer appear when a coding session auto-starts `sbotify`
+
+### Tests
+- Added coverage for the Windows launch helpers in `src/audio/node-mpv-bootstrap.test.ts`
+
+## 2026-03-20 (Explicit Daemon Stop Only)
+
+### Daemon Lifecycle
+- Removed daemon idle auto-shutdown from `src/daemon/daemon-server.ts`
+- Proxy-spawned daemon now detaches on Windows too in `src/proxy/daemon-launcher.ts`, so playback survives terminal closure
+- Daemon now stops only through explicit shutdown paths:
+  - `sbotify stop`
+  - daemon `/shutdown`
+  - dashboard `Stop daemon`
+
+### Dashboard Stop Control
+- Added `POST /api/daemon/stop` in `src/web/web-server.ts`
+- Wired dashboard stop requests to the same daemon shutdown path used by the CLI via `src/index.ts`
+- Added `Stop daemon` button and stopped-state UX in:
+  - `public/index.html`
+  - `public/app.js`
+  - `public/style.css`
+- After a dashboard stop, the page shows a stopped state, disables controls, and stops reconnecting until sbotify is started again
+
+### Tests + Docs
+- Added web coverage for the explicit daemon stop route in `src/web/web-server-database-cleanup.test.ts`
+- Synced README, system architecture, codebase summary, roadmap, and changelog to the explicit-stop lifecycle
+- Validation:
+  - `npm run build`: passed
+  - `npm test`: 86 passed, 0 failed
+
 ## 2026-03-20 (Agent-Facing Discover Guidance Cleanup)
 
 ### MCP Contract Cleanup
