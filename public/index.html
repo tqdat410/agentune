@@ -3,103 +3,219 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>sbotify dashboard</title>
+    <title>sbotify</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/styles/dashboard-settings.css" />
   </head>
   <body>
+    <div class="bg-layer" data-bg-layer></div>
+
     <main class="shell">
-      <section class="hero-card">
-        <div class="art-wrap">
-          <img data-art alt="Album art" src="https://placehold.co/640x640/10131a/e6ecff?text=Sbotify" />
+      <!-- Now Playing View (default) -->
+      <section class="view-panel player-view-panel" id="player-view" data-view="player">
+        <div class="art-stage">
+          <div class="art-frame" data-shared-art-frame>
+            <img data-art alt="Album art" src="https://placehold.co/600x600/1a1a2e/e0e0e0?text=" />
+          </div>
         </div>
-        <div class="hero-copy">
-          <p class="eyebrow">Agent DJ dashboard</p>
-          <h1 data-title>Nothing playing</h1>
-          <p data-artist>Ask your agent to start a track</p>
-          <div class="status-row">
-            <span class="pill" data-state>Idle</span>
+
+        <div class="track-info">
+          <div class="title-row">
+            <h1 class="track-title" data-title>Nothing playing</h1>
           </div>
-          <div class="progress-card">
-            <div class="progress-track">
-              <div class="progress-bar" data-progress></div>
-            </div>
-            <div class="time-row">
-              <span data-current-time>0:00</span>
-              <span data-duration>0:00</span>
-            </div>
-          </div>
-          <div class="controls">
-            <label class="volume-control">
-              <span>Volume</span>
-              <input data-volume type="range" min="0" max="100" value="80" />
-            </label>
-            <button data-mute type="button">Mute</button>
-          </div>
+          <p class="track-artist" data-artist>Ask your agent to start a track</p>
         </div>
       </section>
 
-      <section class="queue-card">
-        <div class="card-head">
-          <h2>Queue</h2>
-          <span>Read only</span>
+      <!-- Queue View -->
+      <section class="view-panel queue-view-panel" id="queue-view" data-view="queue" hidden>
+        <header class="view-header queue-view-header">
+          <p class="queue-list-title">Playing</p>
+        </header>
+        <section class="queue-current">
+          <div class="queue-current-art-frame" data-shared-art-frame>
+            <img data-queue-art class="queue-current-art" alt="Now playing artwork" src="https://placehold.co/160x160/1a1a2e/e0e0e0?text=" />
+          </div>
+          <div class="queue-current-copy">
+            <strong data-queue-current-title>Nothing playing</strong>
+            <span data-queue-current-artist>Ask your agent to start a track</span>
+          </div>
+        </section>
+        <p class="queue-list-title">Up next</p>
+        <div class="queue-list-scroll">
+          <ul data-queue class="queue-list">
+            <li class="queue-empty">Queue is empty</li>
+          </ul>
         </div>
-        <ul data-queue class="queue-list">
-          <li class="queue-empty">Queue not wired yet</li>
-        </ul>
       </section>
 
-      <section class="config-card">
-        <div class="card-head">
-          <h2>Music Preferences</h2>
-        </div>
-        <div class="config-body">
-          <label>Your Taste</label>
-          <textarea data-taste rows="3" maxlength="1000" placeholder="Describe your music taste..."></textarea>
-          <p class="config-help">Discover ranking now uses fixed values from `~/.sbotify/config.json`. This editor only stores free-text taste hints for the agent.</p>
-          <button data-save-taste type="button">Save Persona</button>
-          <p class="persona-message" data-persona-message aria-live="polite"></p>
-        </div>
+      <!-- Settings View -->
+      <section class="view-panel" id="settings-view" data-view="settings" hidden>
+        <header class="view-header view-header-dashboard">
+          <p class="queue-list-title settings-header-line">Dashboard</p>
+        </header>
+
+        <section class="settings-section settings-dashboard">
+          <section class="settings-card insights-chart-card">
+            <div class="settings-card-head settings-card-head-compact">
+              <h3>Last 7 days</h3>
+            </div>
+            <div class="activity-chart activity-line-chart" data-activity-chart></div>
+          </section>
+
+          <div class="dashboard-grid">
+            <section class="settings-card dashboard-metric-card dashboard-plays-card">
+              <article class="insight-card insight-card-compact">
+                <span class="insight-label">Plays</span>
+                <strong class="insight-value" data-insight-plays>0</strong>
+              </article>
+            </section>
+
+            <section class="settings-card dashboard-metric-card dashboard-tracks-card">
+              <article class="insight-card insight-card-compact">
+                <span class="insight-label">Tracks</span>
+                <strong class="insight-value" data-insight-tracks>0</strong>
+              </article>
+            </section>
+
+            <section class="settings-card dashboard-artists-card">
+              <div class="settings-card-head settings-card-head-compact">
+                <h3>Most artists</h3>
+              </div>
+              <ul class="rank-list" data-top-artists></ul>
+            </section>
+
+            <section class="settings-card dashboard-tags-card">
+              <div class="settings-card-head settings-card-head-compact">
+                <h3>Most tags</h3>
+              </div>
+              <ul class="keyword-list keyword-list-minimal" data-top-keywords></ul>
+            </section>
+          </div>
+        </section>
+
+        <p class="queue-list-title settings-section-title">Preferences</p>
+
+        <section class="settings-card taste-card">
+          <div class="settings-card-head settings-card-head-compact">
+            <h3>Taste</h3>
+          </div>
+          <textarea
+            data-taste
+            rows="1"
+            maxlength="1000"
+            placeholder="Warm piano at night, patient Vietnamese ballads, ambient..."
+          ></textarea>
+          <button data-save-taste type="button" class="primary-btn taste-save-btn" aria-label="Save taste">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M5 12.5l4.2 4.2L19 7.5" />
+            </svg>
+          </button>
+          <p class="message" data-message></p>
+        </section>
+
+        <details class="advanced">
+          <summary>
+            <span>Advanced Settings</span>
+            <span class="summary-sub">Database & daemon</span>
+          </summary>
+          <div class="advanced-content">
+            <div class="db-stats">
+              <div class="stat"><span>DB path</span><code data-db-path>Loading…</code></div>
+              <div class="stat"><span>plays</span><strong data-db-plays>0</strong></div>
+              <div class="stat"><span>tracks</span><strong data-db-tracks>0</strong></div>
+              <div class="stat"><span>cache</span><strong data-db-cache>0</strong></div>
+            </div>
+            <div class="danger-zone">
+              <div class="btn-row btn-row-advanced">
+                <button data-db-action="clear-provider-cache" type="button" class="danger-btn">Clear cache</button>
+                <button data-db-action="clear-history" type="button" class="danger-btn">Clear history</button>
+                <button data-db-action="full-reset" type="button" class="danger-btn hard">Full reset</button>
+                <button data-stop-daemon type="button" class="danger-btn hard">Stop daemon</button>
+              </div>
+              <p class="message" data-db-message></p>
+            </div>
+          </div>
+        </details>
       </section>
 
-      <section class="danger-card">
-        <div class="card-head">
-          <h2>Maintenance</h2>
-          <span>Manual actions only</span>
-        </div>
-        <div class="danger-grid">
-          <div class="database-stats">
-            <div class="stat-row">
-              <span>DB path</span>
-              <code data-db-path>Loading…</code>
-            </div>
-            <div class="stat-row">
-              <span>plays</span>
-              <strong data-db-plays>0</strong>
-            </div>
-            <div class="stat-row">
-              <span>tracks</span>
-              <strong data-db-tracks>0</strong>
-            </div>
-            <div class="stat-row">
-              <span>provider cache</span>
-              <strong data-db-provider-cache>0</strong>
-            </div>
+      <div class="player-controls" data-shared-controls>
+        <div class="duration-block">
+          <div class="duration-bar" aria-hidden="true">
+            <span class="duration-fill" data-duration-fill></span>
           </div>
-          <div class="danger-actions">
-            <p class="config-help">Database actions stop playback, clear runtime queue state, then mutate SQLite.</p>
-            <div class="danger-button-row">
-              <button data-db-action="clear-history" type="button" class="danger-button">Clear history</button>
-              <button data-db-action="clear-provider-cache" type="button" class="danger-button subtle-button">Clear provider cache</button>
-              <button data-db-action="full-reset" type="button" class="danger-button hard-danger">Full reset</button>
-            </div>
-            <p class="config-help">Daemon stays alive until you stop it explicitly.</p>
-            <div class="danger-button-row">
-              <button data-stop-daemon type="button" class="danger-button hard-danger">Stop daemon</button>
-            </div>
-            <p class="persona-message" data-database-message aria-live="polite"></p>
+          <div class="duration-meta" aria-label="Playback duration">
+            <span data-elapsed>0:00</span>
+            <span data-total-duration>0:00</span>
           </div>
         </div>
-      </section>
+
+        <div class="transport-row">
+          <button data-pause type="button" class="icon-btn transport-btn transport-btn-primary" aria-label="Pause playback">
+            <svg class="icon-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="6" y="4" width="4" height="16"/>
+              <rect x="14" y="4" width="4" height="16"/>
+            </svg>
+            <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor" hidden>
+              <polygon points="7,5 19,12 7,19"/>
+            </svg>
+          </button>
+          <button data-next type="button" class="icon-btn transport-btn" aria-label="Skip track">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5,4 15,12 5,20 5,4"/>
+              <line x1="19" y1="5" x2="19" y2="19"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="volume-row">
+          <span class="volume-icon volume-icon-min" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 5L6 9H3v6h3l5 4V5z"/>
+            </svg>
+          </span>
+          <input data-volume type="range" min="0" max="100" value="80" class="volume-slider" aria-label="Volume" />
+          <span class="volume-icon volume-icon-max" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 5L6 9H3v6h3l5 4V5z"/>
+              <path d="M15 9a4 4 0 0 1 0 6"/>
+              <path d="M18 6.5a7.5 7.5 0 0 1 0 11"/>
+            </svg>
+          </span>
+        </div>
+      </div>
+
+      <!-- Bottom Nav -->
+      <nav class="tab-bar">
+        <button type="button" class="tab-btn" data-nav="queue" aria-pressed="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M8 6h13M8 12h10M8 18h13"/>
+          </svg>
+          <span>Queue</span>
+        </button>
+
+        <button type="button" class="tab-btn is-active" data-nav="player" aria-pressed="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="12" r="10"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <span>Now Playing</span>
+        </button>
+
+        <button type="button" class="tab-btn" data-nav="settings" aria-pressed="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+          </svg>
+          <span>Settings</span>
+        </button>
+      </nav>
     </main>
 
     <script type="module" src="/app.js"></script>

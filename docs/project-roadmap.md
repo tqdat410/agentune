@@ -6,7 +6,7 @@
 
 - daemon + proxy architecture: complete
 - queue-based playback: complete
-- browser dashboard: complete
+- browser dashboard redesign: complete
 - Apple-first resolution flow: complete
 - flat Apple-only discover rewrite: implemented
 - agent-first state redesign: complete
@@ -19,9 +19,9 @@
 
 Last validated:
 
-- `2026-03-20`
+- `2026-03-21`
 - `npm run build`: passed
-- `npm test`: 92 passed, 0 failed
+- `npm test`: 99 passed, 0 failed
 - built-handler smoke: `discover({ artist: "Nils Frahm", limit: 1 })` returned a paginated Apple candidate
 
 ## Completed Milestones
@@ -42,10 +42,12 @@ Last validated:
 ### Dashboard
 
 - live playback state
-- queue preview
-- volume and mute controls
+- artwork-first player shell with full-screen `Queue / Now Playing / Settings` tabs
+- read-only queue view
+- pause, next, and volume controls
+- minimal dashboard insights in `Settings`
 - persona taste editor
-- `/api/persona` and WebSocket persona sync
+- `/api/persona`, `/api/artwork`, and WebSocket sync
 
 ### State Redesign
 

@@ -6,14 +6,39 @@ import { QueueManager } from './queue-manager.js';
 
 class FakeMpv extends EventEmitter {
   public playCalls: Array<{ url: string; meta: unknown }> = [];
+  public resumeCalls = 0;
   public stopCalls = 0;
+  public pauseProperty = false;
+  public isPlaying = false;
 
   play(url: string, meta: unknown): void {
     this.playCalls.push({ url, meta });
+    this.isPlaying = !this.pauseProperty;
   }
 
   stop(): void {
     this.stopCalls += 1;
+    this.isPlaying = false;
+  }
+
+  resume(): void {
+    this.resumeCalls += 1;
+    this.pauseProperty = false;
+    this.isPlaying = true;
+  }
+
+  pause(): void {
+    this.pauseProperty = true;
+    this.isPlaying = false;
+  }
+
+  emitStopped(): void {
+    this.isPlaying = false;
+    this.emit('stopped');
+  }
+
+  async getPosition(): Promise<number> {
+    return 0;
   }
 }
 
@@ -182,6 +207,75 @@ test('QueuePlaybackController skip plays the next queued track', async () => {
 
   assert.equal(fakeMpv.stopCalls, 1);
   assert.equal(nextTrack?.id, 'next');
+  assert.equal(queueManager.getNowPlaying()?.id, 'next');
+  assert.deepEqual(queueManager.getState().history.map((item) => item.id), ['current']);
+});
+
+test('QueuePlaybackController skip clears paused state before starting the next track', async () => {
+  const queueManager = new QueueManager();
+  const fakeMpv = new FakeMpv();
+  const controller = new QueuePlaybackController(
+    fakeMpv as never,
+    queueManager,
+    new FakeYouTubeProvider() as never,
+  );
+
+  queueManager.setNowPlaying({
+    id: 'current',
+    title: 'Current',
+    artist: 'Artist current',
+    duration: 180,
+    thumbnail: 'thumb-current',
+    url: 'https://youtube.test/current',
+  });
+  queueManager.add({
+    id: 'next',
+    title: 'Next',
+    artist: 'Artist next',
+    duration: 200,
+    thumbnail: 'thumb-next',
+    url: 'https://youtube.test/next',
+  });
+  fakeMpv.pause();
+
+  const nextTrack = await controller.skip();
+
+  assert.equal(nextTrack?.id, 'next');
+  assert.equal(fakeMpv.resumeCalls, 1);
+  assert.equal(fakeMpv.isPlaying, true);
+  assert.equal(queueManager.getNowPlaying()?.id, 'next');
+});
+
+test('QueuePlaybackController advances when playback stops naturally', async () => {
+  const queueManager = new QueueManager();
+  const fakeMpv = new FakeMpv();
+  const controller = new QueuePlaybackController(
+    fakeMpv as never,
+    queueManager,
+    new FakeYouTubeProvider() as never,
+  );
+
+  queueManager.setNowPlaying({
+    id: 'current',
+    title: 'Current',
+    artist: 'Artist current',
+    duration: 180,
+    thumbnail: 'thumb-current',
+    url: 'https://youtube.test/current',
+  });
+  queueManager.add({
+    id: 'next',
+    title: 'Next',
+    artist: 'Artist next',
+    duration: 200,
+    thumbnail: 'thumb-next',
+    url: 'https://youtube.test/next',
+  });
+
+  fakeMpv.emitStopped();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(fakeMpv.playCalls.length, 1);
   assert.equal(queueManager.getNowPlaying()?.id, 'next');
   assert.deepEqual(queueManager.getState().history.map((item) => item.id), ['current']);
 });

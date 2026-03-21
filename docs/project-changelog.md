@@ -1,5 +1,285 @@
 # Project Changelog
 
+## 2026-03-21 (Queue Auto-Advance After Natural Track End)
+
+### Root Cause + Fix
+- Fixed a startup-timing bug where the first playback command could reach `node-mpv` before the idle IPC warmup completed, which caused later EOF stop events to be missed and left the queue stuck until a manual skip.
+- Added an mpv startup warmup gate in:
+  - `src/audio/mpv-controller.ts`
+  - `src/index.ts`
+- The daemon now waits briefly after `mpv.init()` before it starts serving playback commands, so natural track end can advance the queue reliably.
+
+### Regression Coverage
+- Added queue-controller coverage for natural stop-driven advancement in:
+  - `src/queue/queue-playback-controller.test.ts`
+
+### Validation
+- `npm test`: 108 passed, 0 failed
+- Runtime probe with real `mpv` + two 1-second WAV files:
+  - first track ended naturally
+  - next track started automatically
+  - queue drained into history without manual skip
+
+## 2026-03-21 (Paused Playback Visual Effects)
+
+### Dashboard Pause State
+- Added a dedicated playback visual-state mapper in:
+  - `public/dashboard/playback-visual-state.js`
+- Dashboard render now writes `data-playback-visual-state` to the document root so the paused look stays driven by playback state instead of ad-hoc DOM styling in:
+  - `public/dashboard/render.js`
+
+### Pause/Resume Motion + Tone Shift
+- Added paused-state transitions in:
+  - `public/style.css`
+- Locked the paused visual treatment to:
+  - slightly larger play icon while paused
+  - main artwork and queue-current artwork scaling down toward center
+  - artwork shifting to a near-monochrome, desaturated look
+  - ambient background desaturating and dimming while paused
+  - full color and scale restoring on resume
+- Adjusted the paused artwork zoom so the frame components scale instead of only the inner image, preventing exposed frame background during pause.
+
+### Regression Coverage
+- Added playback visual-state coverage in:
+  - `src/web/playback-visual-state.test.ts`
+- Locked these mappings:
+  - no track -> `idle`
+  - active track + playing -> `playing`
+  - active track + paused -> `paused`
+
+### Validation
+- `node --check public/dashboard/render.js`: passed
+- `node --check public/dashboard/playback-visual-state.js`: passed
+- `npm test`: 107 passed, 0 failed
+
+## 2026-03-21 (Dashboard Pause/Resume Control Fix)
+
+### Playback Control Fix
+- Fixed the dashboard primary transport button so it now sends WebSocket `playback-toggle` instead of the old pause-only event in:
+  - `public/app.js`
+- Updated dashboard playback rendering so the primary transport button:
+  - stays enabled while a track exists, even when paused
+  - swaps between pause and play icons based on playback state
+  - updates its `aria-label` to `Pause playback` or `Resume playback` in:
+    - `public/dashboard/render.js`
+
+### Regression Coverage
+- Expanded WebSocket playback control coverage in:
+  - `src/web/web-server-playback-controls.test.ts`
+- Locked these behaviors:
+  - pause-only messages still remain one-way
+  - `playback-toggle` resumes paused playback
+  - `playback-toggle` can pause again before resuming and skipping forward
+
+### State Sync Hardening
+- Removed direct pause/play icon flipping from:
+  - `public/app.js`
+- Let dashboard render state remain the single source of truth for the primary transport icon.
+- Ignored stale `/api/status` bootstrap data once live socket state or a playback control action already exists in:
+  - `public/app.js`
+- Dropped older in-flight dashboard refreshes so a slower pre-pause refresh cannot overwrite a newer paused snapshot in:
+  - `src/web/state-broadcaster.ts`
+- Added overlap coverage in:
+  - `src/web/state-broadcaster.test.ts`
+
+### Skip From Pause
+- Fixed queue playback so skipping while paused clears mpv's lingering pause flag before the next track starts in:
+  - `src/queue/queue-playback-controller.ts`
+- Added regression coverage for:
+  - queue-level pause-then-skip playback recovery in `src/queue/queue-playback-controller.test.ts`
+  - dashboard WebSocket pause-then-next behavior in `src/web/web-server-playback-controls.test.ts`
+
+### Transport Icon Rendering
+- Fixed the dashboard transport icon toggle to update the real `hidden` attribute on inline SVG nodes instead of writing the non-reflected `.hidden` property in:
+  - `public/dashboard/render.js`
+  - `public/dashboard/toggle-hidden-attribute.js`
+- Added regression coverage for the attribute-based SVG visibility path in:
+  - `src/web/toggle-hidden-attribute.test.ts`
+
+### Validation
+- `npm run build`: passed
+- `node --check public/app.js`: passed
+- `node --check public/dashboard/render.js`: passed
+- `npm test`: 103 passed, 0 failed
+
+## 2026-03-21 (Minimal Dashboard Layout Revision)
+
+### Dashboard Layout
+- Simplified the Settings analytics surface into a more minimal `Dashboard` block
+- Reduced copy so the top of the view now starts with a single `Dashboard` heading
+- Kept only `Dashboard` at the top of the analytics block and moved `Settings` into its own lower section heading, using the same compact label style as `Playing` / `Up next`
+- Removed card chrome from the lower `Settings` content too, so `Taste` and `Advanced` now read as frameless sections
+- Renamed the lower section label from `Settings` to `Preferences`, added more vertical separation from the dashboard block, and renamed the maintenance section to `Advanced Settings`
+- Flattened the `Taste` textarea itself as well: no border, no background, and no resize handle
+- Replaced the `Taste` save CTA with a minimal circular outline button using a gray checkmark icon
+- Centered the `Taste` save button and the `Persona saved.` feedback line in the frameless settings area
+- Restyled the four maintenance buttons into a cleaner 2-column outline grid with softer surfaces and red-tinted emphasis only on destructive actions
+- Moved `Clear cache` ahead of `Clear history` and aligned both to the same neutral outline style
+- Removed fill and hover styling from all four maintenance buttons so the group now reads as pure border-only controls
+- Added interactive count tooltips to the `Last 7 days` chart: hover/focus on desktop, tap on mobile, with a minimal numeric-only bubble per point
+- Removed the tooltip bubble chrome from the `Last 7 days` chart so hover/tap now shows only the white count text
+- Removed the mobile-only single-column fallback for the dashboard grid so the current asymmetric composition stays intact on narrow screens too
+- Changed the `Taste` textarea to auto-grow with its content, including initial persona load and live typing
+- Fixed the hidden-settings regression where `Taste` could render at `0px` height after persona preload by re-syncing textarea height when the `Preferences` view becomes visible
+- Scoped dashboard `Plays`, `Tracks`, `Most artists`, and `Most tags` to the same trailing 7-day window as the chart while keeping raw DB counts intact for `Advanced Settings`
+- Reworked the dashboard area into:
+  - one full-width `Last 7 days` card
+  - an asymmetric grid below it
+  - `Plays` and `Tracks` on the top-left row
+  - `Most artists` pinned on the right across two rows
+  - `Most tags` spanning the lower-left row
+- Removed the old `Avg completion` and `Recent plays` dashboard blocks
+- Hid the Settings scrollbar chrome while keeping scroll behavior intact
+- Removed card chrome from the chart, `Plays`, and `Tracks` so the top dashboard area reads more like a layout than stacked panels
+- Made `Most artists` and `Most tags` frameless too, removed artist meter bars, and changed tags into plain outlined chips without counts
+- Centered `Plays` and `Tracks`, then removed the tag chip borders and lifted the 3-tag cap so the tag block can fill two wrapped rows
+- Synced frameless tag text and the `Most artists` heading to the same muted label color used by `Plays` and `Tracks`
+- Kept the `Most tags` heading aligned with `Most artists`, but restored the tag values themselves to bright white
+- Decoupled the dashboard line chart from artwork theming so the line, points, and area tint stay white
+
+### Chart + Data Contract
+- Replaced the old bar-style activity view with a curved SVG line chart in `public/dashboard/insights.js`
+- Trimmed `GET /api/database/stats` insights to:
+  - `skipRate`
+  - `activity7d`
+  - top 3 artists
+  - top tags for the 2-row dashboard block
+- Kept raw DB `counts` intact for maintenance UI compatibility
+
+### Validation
+- Updated coverage in:
+  - `src/history/history-store.test.ts`
+  - `src/web/web-server-database-cleanup.test.ts`
+- Validation:
+  - `npm run build`: passed
+  - `npm test`: 99 passed, 0 failed
+  - `node --check public/app.js`: passed
+  - `node --check public/dashboard/insights.js`: passed
+  - `node --check public/dashboard/dom.js`: passed
+
+## 2026-03-21 (Settings Refresh + SQLite Listening Insights)
+
+### Settings Layout + Front-End Structure
+- Rebuilt the `Settings` view into a clearer vertical hierarchy:
+  - `Listening insights`
+  - `Your taste`
+  - `Advanced`
+- Added a dedicated settings stylesheet in:
+  - `public/styles/dashboard-settings.css`
+- Added focused dashboard modules for settings data and insights rendering in:
+  - `public/dashboard/insights.js`
+  - `public/dashboard/settings-api.js`
+- Updated:
+  - `public/index.html`
+  - `public/app.js`
+  - `public/dashboard/dom.js`
+  - `public/dashboard/render.js`
+  - `public/style.css`
+
+### Dashboard Insights
+- Expanded `GET /api/database/stats` to return:
+  - raw counts
+  - avg completion
+  - skip rate
+  - 7-day activity buckets
+  - top artists
+  - top keywords
+  - recent plays
+- Added lightweight Settings analytics UI:
+  - KPI cards
+  - clean 7-day activity chart
+  - ranked artist meters
+  - keyword chips
+  - recent-play list
+- Refreshed Settings stats on:
+  - initial load
+  - Settings tab open
+  - cleanup actions
+  - current-track changes while Settings is open
+
+### History Store + Validation
+- Extended `src/history/history-store.ts` so dashboard stats derive from real SQLite aggregates instead of maintenance counts only
+- Added/updated coverage in:
+  - `src/history/history-store.test.ts`
+  - `src/web/web-server-database-cleanup.test.ts`
+- Validation:
+  - `npm run build`: passed
+  - `npm test`: 98 passed, 0 failed
+  - `node --check public/app.js`: passed
+  - `node --check public/dashboard/insights.js`: passed
+  - `node --check public/dashboard/settings-api.js`: passed
+
+## 2026-03-20 (Dashboard Playback Controls + Client Mapping Fix)
+
+### Dashboard Controls
+- Moved the primary `Pause` control above the volume row and centered it in the player layout
+- Added a dedicated `Next track` control beside `Pause` in:
+  - `public/index.html`
+  - `public/style.css`
+- Added a playback duration row above the transport controls with:
+  - elapsed time on the left
+  - full track duration on the right
+  - a slim progress bar synced to current playback position
+- Reworked the `Queue` view so the current track appears in a dedicated artwork + metadata row above a flat queue list without card borders/backgrounds
+- Moved playback controls into one shared dashboard block so `Playing` and `Queue` keep the same duration / transport / volume positions, and made the `Up next` list independently scrollable
+- Added a smooth shared-element artwork transition between `Now Playing` and `Queue` when switching tabs in browsers that support View Transitions
+- Corrected transport semantics so the dashboard `Pause` control sends pause-only behavior while `Next` remains skip
+- Removed the mute button from the player strip
+- Replaced the mute button and volume percentage with decorative speaker icons on both sides of the volume slider
+- Removed background chrome from the `Pause` and `Next` buttons so transport controls render as plain icons
+- Reconnected dashboard background and glass surfaces to the extracted artwork palette instead of fixed gradient values
+
+### Client/Server Mapping Fix
+- Re-aligned the browser dashboard modules with the current `public/index.html` selectors in:
+  - `public/app.js`
+  - `public/dashboard/dom.js`
+  - `public/dashboard/marquee.js`
+  - `public/dashboard/render.js`
+- Reworked overflow title animation so text scrolls inside its own viewport in stepped motion instead of translating the whole heading block
+- Restored working dashboard playback actions by wiring WebSocket control messages for:
+  - pause/resume toggle
+  - next/skip
+- Added album-art fallback logic so the dashboard uses the raw thumbnail URL if `/api/artwork` fails on an older running daemon
+- Updated `public/dashboard/theme.js` to sample artwork from the proxy first, then fall back to the raw thumbnail URL
+- Fixed the remaining palette extraction blocker by loading remote artwork with `crossOrigin = 'anonymous'` before canvas sampling
+- Added WebSocket playback control coverage in:
+  - `src/web/web-server-playback-controls.test.ts`
+
+### Docs + Validation
+- Synced `README.md` and `docs/codebase-summary.md` to the current dashboard control surface
+- Validation:
+  - `npm run build`: passed
+  - `npm test`: 96 passed, 0 failed
+
+## 2026-03-20 (Apple-Music-Inspired Dashboard Redesign)
+
+### Dashboard UX + Front-End Structure
+- Rebuilt the browser dashboard into a player-first shell with full-screen `Queue / Now Playing / Settings` tabs
+- Replaced the old multi-card layout in:
+  - `public/index.html`
+  - `public/style.css`
+  - `public/app.js`
+- Split dashboard front-end code into focused browser modules and CSS partials under:
+  - `public/dashboard/`
+  - `public/styles/`
+- Added marquee-on-overflow title handling and a centered 1:1 artwork presentation
+- Moved maintenance controls into an `Advanced` settings section while keeping persona editing on the main settings surface
+
+### Artwork Proxy + Ambient Theming
+- Added `GET /api/artwork?src=...` in:
+  - `src/web/web-server.ts`
+  - `src/web/web-server-artwork-proxy.ts`
+- Dashboard artwork now renders through a same-origin proxy so the browser can safely sample colors for ambient gradient theming
+- Added artwork proxy coverage in:
+  - `src/web/web-server-artwork-proxy.test.ts`
+
+### Docs + Validation
+- Added `docs/design-guidelines.md` for the current dashboard visual system and interaction rules
+- Synced `docs/codebase-summary.md`, `docs/system-architecture.md`, roadmap, and changelog to the redesigned dashboard surface
+- Validation:
+  - `npm run build`: passed
+  - `npm test`: 95 passed, 0 failed
+
 ## 2026-03-20 (Optional Auto-Start + Manual Start Command)
 
 ### Daemon Startup Control

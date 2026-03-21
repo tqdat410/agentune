@@ -1,73 +1,34 @@
-const elements = {
-  artist: document.querySelector('[data-artist]'),
-  art: document.querySelector('[data-art]'),
-  currentTime: document.querySelector('[data-current-time]'),
-  duration: document.querySelector('[data-duration]'),
-  mute: document.querySelector('[data-mute]'),
-  progress: document.querySelector('[data-progress]'),
-  queue: document.querySelector('[data-queue]'),
-  state: document.querySelector('[data-state]'),
-  title: document.querySelector('[data-title]'),
-  volume: document.querySelector('[data-volume]'),
-  taste: document.querySelector('[data-taste]'),
-  saveTaste: document.querySelector('[data-save-taste]'),
-  personaMessage: document.querySelector('[data-persona-message]'),
-  databasePath: document.querySelector('[data-db-path]'),
-  databasePlays: document.querySelector('[data-db-plays]'),
-  databaseTracks: document.querySelector('[data-db-tracks]'),
-  databaseProviderCache: document.querySelector('[data-db-provider-cache]'),
-  databaseMessage: document.querySelector('[data-database-message]'),
-  databaseActions: Array.from(document.querySelectorAll('[data-db-action]')),
-  stopDaemon: document.querySelector('[data-stop-daemon]'),
-};
+import { DATABASE_ACTION_LABELS, STOP_DAEMON_LABEL } from './dashboard/constants.js';
+import { elements } from './dashboard/dom.js';
+import {
+  applyStoppedState,
+  renderDatabaseStats,
+  renderPersona,
+  renderState,
+  resetDangerActionLabels,
+  setActiveView,
+  setDangerActionArmed,
+  showDatabaseMessage,
+  showPersonaMessage,
+} from './dashboard/render.js';
+import {
+  fetchDatabaseStats,
+  postDatabaseAction,
+  requestDaemonStop,
+  savePersonaTaste,
+} from './dashboard/settings-api.js';
+import { syncTasteTextareaHeight } from './dashboard/taste-textarea.js';
 
-let socket;
 let armedDangerAction = null;
 let dangerArmTimer = null;
 let daemonStoppedByUser = false;
+let socket;
+let activeView = 'player';
+let lastInsightTrackKey = '';
+let allowStatusBootstrap = true;
 
-const DATABASE_ACTION_LABELS = {
-  'clear-history': 'Clear history',
-  'clear-provider-cache': 'Clear provider cache',
-  'full-reset': 'Full reset',
-};
-const STOP_DAEMON_LABEL = 'Stop daemon';
-
-function formatTime(totalSeconds) {
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = Math.floor(totalSeconds % 60);
-  return `${minutes}:${String(seconds).padStart(2, '0')}`;
-}
-
-function renderQueue(queue) {
-  if (queue.length === 0) {
-    elements.queue.innerHTML = '<li class="queue-empty">Queue not wired yet</li>';
-    return;
-  }
-
-  elements.queue.innerHTML = queue
-    .map((item) => `<li><strong>${item.title}</strong><span>${item.artist}</span></li>`)
-    .join('');
-}
-
-function renderState(state) {
-  elements.title.textContent = state.title ?? 'Nothing playing';
-  elements.artist.textContent = state.artist ?? 'Ask your agent to start a track';
-  elements.state.textContent = state.playing ? 'Playing' : 'Idle';
-  elements.currentTime.textContent = formatTime(state.position);
-  elements.duration.textContent = formatTime(state.duration);
-  elements.progress.style.width = `${state.duration > 0 ? (state.position / state.duration) * 100 : 0}%`;
-  elements.volume.value = String(state.volume);
-  elements.mute.textContent = state.muted ? 'Unmute' : 'Mute';
-  elements.art.src = state.thumbnail || 'https://placehold.co/640x640/10131a/e6ecff?text=Sbotify';
-  renderQueue(state.queue);
-}
-
-function renderDatabaseStats(stats) {
-  elements.databasePath.textContent = stats.dbPath;
-  elements.databasePlays.textContent = String(stats.counts.plays);
-  elements.databaseTracks.textContent = String(stats.counts.tracks);
-  elements.databaseProviderCache.textContent = String(stats.counts.providerCache);
+function syncVolumeSliderFill(level) {
+  elements.volume.style.setProperty('--volume-progress', `${level}%`);
 }
 
 function connect() {
@@ -76,7 +37,9 @@ function connect() {
   socket.addEventListener('message', (event) => {
     const payload = JSON.parse(event.data);
     if (payload.type === 'state') {
+      allowStatusBootstrap = false;
       renderState(payload.data);
+      maybeRefreshInsightsForState(payload.data);
     }
     if (payload.type === 'persona') {
       renderPersona(payload.data);
@@ -84,189 +47,184 @@ function connect() {
   });
 
   socket.addEventListener('close', () => {
-    if (daemonStoppedByUser) {
-      return;
+    if (!daemonStoppedByUser) {
+      window.setTimeout(connect, 1000);
     }
-    window.setTimeout(connect, 1000);
   });
 }
 
 function sendSocketMessage(payload) {
-  if (!socket || socket.readyState !== WebSocket.OPEN) {
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(payload));
+    return true;
+  }
+
+  return false;
+}
+
+function transitionBetweenViews(nextView) {
+  const fromPlayableView = activeView === 'player' || activeView === 'queue';
+  const toPlayableView = nextView === 'player' || nextView === 'queue';
+  const canTransition = typeof document.startViewTransition === 'function'
+    && fromPlayableView
+    && toPlayableView
+    && activeView !== nextView;
+
+  if (canTransition) {
+    document.startViewTransition(() => {
+      setActiveView(nextView);
+      activeView = nextView;
+      if (nextView === 'settings') {
+        void loadDatabaseStats();
+      }
+    });
     return;
   }
 
-  socket.send(JSON.stringify(payload));
-}
-
-elements.volume.addEventListener('input', (event) => {
-  sendSocketMessage({ type: 'volume', level: Number(event.target.value) });
-});
-
-elements.mute.addEventListener('click', () => {
-  sendSocketMessage({ type: 'mute' });
-});
-
-function renderPersona(data) {
-  // Don't overwrite textarea if user is editing
-  if (data.taste !== undefined && document.activeElement !== elements.taste) {
-    elements.taste.value = data.taste;
+  setActiveView(nextView);
+  activeView = nextView;
+  if (nextView === 'settings') {
+    void loadDatabaseStats();
   }
 }
 
-function showDatabaseMessage(message, isError = false) {
-  elements.databaseMessage.textContent = message;
-  elements.databaseMessage.classList.toggle('is-error', isError);
-}
-
-function resetDangerActionArming() {
+function clearDangerArming() {
   armedDangerAction = null;
   if (dangerArmTimer) {
     window.clearTimeout(dangerArmTimer);
     dangerArmTimer = null;
   }
-  for (const button of elements.databaseActions) {
-    button.classList.remove('is-armed');
-    button.textContent = DATABASE_ACTION_LABELS[button.dataset.dbAction];
-  }
-  elements.stopDaemon.classList.remove('is-armed');
-  elements.stopDaemon.textContent = STOP_DAEMON_LABEL;
+  resetDangerActionLabels();
 }
 
 function armDangerAction(button, action) {
-  resetDangerActionArming();
+  clearDangerArming();
   armedDangerAction = action;
-  button.classList.add('is-armed');
-  button.textContent = action.kind === 'daemon'
+  const label = action.kind === 'daemon'
     ? `Confirm ${STOP_DAEMON_LABEL}`
     : `Confirm ${DATABASE_ACTION_LABELS[action.id]}`;
+  setDangerActionArmed(button, label);
   showDatabaseMessage('Click the same button again within 5 seconds to confirm.');
   dangerArmTimer = window.setTimeout(() => {
-    resetDangerActionArming();
+    clearDangerArming();
     showDatabaseMessage('Confirmation expired.');
   }, 5000);
 }
 
-async function loadDatabaseStats() {
+async function loadDatabaseStats(options = {}) {
+  const { preserveMessage = false } = options;
   try {
-    const response = await fetch('/api/database/stats');
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.message ?? 'Failed to load database stats.');
+    const stats = await fetchDatabaseStats();
+    renderDatabaseStats(stats);
+    if (!preserveMessage) {
+      showDatabaseMessage('');
     }
-    renderDatabaseStats(data.stats);
-  } catch (err) {
-    showDatabaseMessage(err.message ?? 'Failed to load database stats.', true);
+  } catch (error) {
+    showDatabaseMessage(error.message ?? 'Failed to load database stats.', true);
   }
 }
 
-async function runDatabaseAction(action, button) {
+async function runDatabaseAction(actionId, button) {
   button.disabled = true;
   try {
-    const response = await fetch(`/api/database/${action}`, { method: 'POST' });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.message ?? 'Database cleanup failed.');
-    }
-
+    const data = await postDatabaseAction(actionId);
     renderDatabaseStats(data.stats);
     showDatabaseMessage(data.message ?? 'Cleanup complete.');
-    resetDangerActionArming();
-  } catch (err) {
-    showDatabaseMessage(err.message ?? 'Database cleanup failed.', true);
+    clearDangerArming();
+  } catch (error) {
+    showDatabaseMessage(error.message ?? 'Database cleanup failed.', true);
   } finally {
     button.disabled = false;
-    await loadDatabaseStats();
+    await loadDatabaseStats({ preserveMessage: true });
   }
-}
-
-function disableControlsAfterStop() {
-  daemonStoppedByUser = true;
-  elements.volume.disabled = true;
-  elements.mute.disabled = true;
-  elements.taste.disabled = true;
-  elements.saveTaste.disabled = true;
-  elements.stopDaemon.disabled = true;
-  for (const button of elements.databaseActions) {
-    button.disabled = true;
-  }
-}
-
-function applyStoppedState(message) {
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.close();
-  }
-  disableControlsAfterStop();
-  elements.title.textContent = 'Daemon stopped';
-  elements.artist.textContent = 'Run "sbotify start", or open a new coding session if auto-start is enabled.';
-  elements.state.textContent = 'Stopped';
-  elements.currentTime.textContent = '0:00';
-  elements.duration.textContent = '0:00';
-  elements.progress.style.width = '0%';
-  elements.queue.innerHTML = '<li class="queue-empty">Daemon is stopped</li>';
-  showDatabaseMessage(message);
-  showPersonaMessage('Daemon stopped. This page will stay offline until sbotify starts again.');
 }
 
 async function runDaemonStop(button) {
   button.disabled = true;
   try {
-    const response = await fetch('/api/daemon/stop', { method: 'POST' });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.message ?? 'Daemon stop failed.');
-    }
-
-    resetDangerActionArming();
+    const data = await requestDaemonStop();
+    daemonStoppedByUser = true;
+    clearDangerArming();
+    socket?.close();
     applyStoppedState(data.message ?? 'Daemon stop requested.');
-  } catch (err) {
-    resetDangerActionArming();
+  } catch (error) {
+    clearDangerArming();
     button.disabled = false;
-    showDatabaseMessage(err.message ?? 'Daemon stop failed.', true);
+    showDatabaseMessage(error.message ?? 'Daemon stop failed.', true);
   }
 }
 
-elements.saveTaste.addEventListener('click', () => {
-  fetch('/api/persona', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ taste: elements.taste.value.trim() }),
-  })
-    .then(async (response) => {
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message ?? 'Persona save failed.');
-      }
-      return data;
-    })
-    .then((data) => {
-      showPersonaMessage('Persona saved.');
-      if (data.taste !== undefined) renderPersona(data);
-    })
-    .catch((err) => {
-      showPersonaMessage(err.message ?? 'Persona save failed.', true);
-      console.error('Save taste failed:', err);
-    });
+function maybeRefreshInsightsForState(state) {
+  const nextTrackKey = `${state.title ?? ''}::${state.artist ?? ''}`;
+  const trackChanged = nextTrackKey !== lastInsightTrackKey;
+  lastInsightTrackKey = nextTrackKey;
+
+  if (activeView === 'settings' && trackChanged) {
+    void loadDatabaseStats();
+  }
+}
+
+elements.navButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    transitionBetweenViews(button.dataset.nav ?? 'player');
+  });
 });
 
-for (const button of elements.databaseActions) {
+elements.volume.addEventListener('input', (event) => {
+  const level = Number(event.target.value);
+  syncVolumeSliderFill(level);
+  if (sendSocketMessage({ type: 'volume', level })) {
+    allowStatusBootstrap = false;
+  }
+});
+
+elements.taste.addEventListener('input', () => {
+  syncTasteTextareaHeight(elements.taste);
+});
+
+elements.pause.addEventListener('click', () => {
+  if (elements.pause.disabled) {
+    return;
+  }
+  if (sendSocketMessage({ type: 'playback-toggle' })) {
+    allowStatusBootstrap = false;
+  }
+});
+
+elements.next.addEventListener('click', () => {
+  if (sendSocketMessage({ type: 'next' })) {
+    allowStatusBootstrap = false;
+  }
+});
+
+elements.saveTaste.addEventListener('click', async () => {
+  try {
+    const data = await savePersonaTaste(elements.taste.value.trim());
+    showPersonaMessage('Persona saved.');
+    renderPersona(data);
+  } catch (error) {
+    showPersonaMessage(error.message ?? 'Persona save failed.', true);
+  }
+});
+
+elements.databaseActions.forEach((button) => {
   button.addEventListener('click', async () => {
     const actionId = button.dataset.dbAction;
+    const action = { kind: 'database', id: actionId };
     if (!actionId) {
       return;
     }
-    const action = { kind: 'database', id: actionId };
-    if (!armedDangerAction || armedDangerAction.kind !== action.kind || armedDangerAction.id !== action.id) {
+    if (armedDangerAction?.kind !== action.kind || armedDangerAction?.id !== action.id) {
       armDangerAction(button, action);
       return;
     }
     await runDatabaseAction(actionId, button);
   });
-}
+});
 
 elements.stopDaemon.addEventListener('click', async () => {
   const action = { kind: 'daemon', id: 'stop-daemon' };
-  if (!armedDangerAction || armedDangerAction.kind !== action.kind) {
+  if (armedDangerAction?.kind !== action.kind) {
     armDangerAction(elements.stopDaemon, action);
     return;
   }
@@ -275,9 +233,16 @@ elements.stopDaemon.addEventListener('click', async () => {
 
 fetch('/api/status')
   .then((response) => response.json())
-  .then((state) => renderState(state))
+  .then((state) => {
+    if (!allowStatusBootstrap) {
+      return;
+    }
+    allowStatusBootstrap = false;
+    renderState(state);
+    maybeRefreshInsightsForState(state);
+  })
   .catch(() => {
-    elements.state.textContent = 'Waiting for server';
+    showDatabaseMessage('Waiting for server state.');
   });
 
 fetch('/api/persona')
@@ -285,11 +250,9 @@ fetch('/api/persona')
   .then((data) => renderPersona(data))
   .catch(() => {});
 
+syncVolumeSliderFill(Number(elements.volume.value));
+syncTasteTextareaHeight(elements.taste);
+setActiveView('player');
+activeView = 'player';
 void loadDatabaseStats();
-
 connect();
-
-function showPersonaMessage(message, isError = false) {
-  elements.personaMessage.textContent = message;
-  elements.personaMessage.classList.toggle('is-error', isError);
-}

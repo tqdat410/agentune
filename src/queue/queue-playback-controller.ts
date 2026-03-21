@@ -249,6 +249,9 @@ export class QueuePlaybackController {
     audio: AudioInfo,
     extraMeta?: { context?: string; canonicalArtist?: string; canonicalTitle?: string },
   ): void {
+    // mpv keeps its pause property until explicitly cleared, so a paused track
+    // followed by skip would otherwise load the next song in a paused state.
+    this.mpv.resume();
     this.mpv.play(audio.streamUrl, queueItem);
     this.queueManager.setNowPlaying(queueItem);
     getWebServer()?.openDashboardOnce();

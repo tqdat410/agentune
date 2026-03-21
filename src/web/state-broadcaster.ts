@@ -36,6 +36,7 @@ function mapTrack(track: TrackMeta | null) {
 export class StateBroadcaster extends EventEmitter {
   private lastSerializedState = '';
   private positionTimer: NodeJS.Timeout;
+  private refreshGeneration = 0;
   private state: DashboardState;
 
   constructor(
@@ -61,7 +62,12 @@ export class StateBroadcaster extends EventEmitter {
   }
 
   async refresh(): Promise<void> {
+    const refreshGeneration = ++this.refreshGeneration;
     const nextState = await this.buildState();
+    if (refreshGeneration !== this.refreshGeneration) {
+      return;
+    }
+
     const serialized = JSON.stringify(nextState);
     if (serialized === this.lastSerializedState) {
       return;
@@ -91,7 +97,13 @@ export class StateBroadcaster extends EventEmitter {
   }
 
   private async buildState(): Promise<DashboardState> {
-    const snapshot = this.mpv.getState();
+    const currentState = this.mpv.getState();
+    const snapshot = {
+      currentTrack: currentState.currentTrack ? { ...currentState.currentTrack } : null,
+      isPlaying: currentState.isPlaying,
+      isMuted: currentState.isMuted,
+      volume: currentState.volume,
+    };
     const track = mapTrack(snapshot.currentTrack);
     const position = snapshot.currentTrack && this.mpv.isReady()
       ? Math.max(0, Math.round(await this.mpv.getPosition()))

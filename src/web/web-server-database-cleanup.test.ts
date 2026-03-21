@@ -126,40 +126,85 @@ test('WebServer database cleanup endpoints stop runtime state and clear selected
   await webServer.waitUntilReady();
 
   try {
-    store.recordPlay({ title: 'Track A', artist: 'Artist A', duration: 200, thumbnail: 'thumb', ytVideoId: 'vid-a' });
+    const playId = store.recordPlay({ title: 'Track A', artist: 'Artist A', duration: 200, thumbnail: 'thumb', ytVideoId: 'vid-a' });
+    store.updatePlay(playId, { played_sec: 140, skipped: false });
     store.getDatabase().prepare(`
       INSERT INTO provider_cache (cache_key, response_json, fetched_at)
       VALUES ('apple:test', '{}', 123)
     `).run();
+    store.updateTrackTags('artist a::track a', ['ambient']);
     queueManager.add({ id: 'queued', title: 'Queued', artist: 'Artist Q', duration: 100, thumbnail: 'thumb', url: 'url' });
     queueManager.setNowPlaying({ id: 'current', title: 'Current', artist: 'Artist C', duration: 120, thumbnail: 'thumb', url: 'url' });
     mpv.setCurrentTrack({ title: 'Current', artist: 'Artist C', duration: 120, thumbnail: 'thumb' });
 
     const statsResponse = await fetch(`${webServer.getDashboardUrl()}/api/database/stats`);
-    const statsPayload = await statsResponse.json() as { stats: { counts: { plays: number; tracks: number; providerCache: number } } };
+    const statsPayload = await statsResponse.json() as {
+      stats: {
+        counts: { plays: number; tracks: number; providerCache: number };
+        insights: {
+          plays7d: number;
+          tracks7d: number;
+          skipRate: number;
+          activity7d: Array<{ dayLabel: string; plays: number }>;
+          topArtists: Array<{ artist: string; plays: number }>;
+          topKeywords: Array<{ keyword: string; frequency: number }>;
+        };
+      };
+    };
     assert.deepEqual(statsPayload.stats.counts, { plays: 1, tracks: 1, providerCache: 1 });
+    assert.equal(statsPayload.stats.insights.plays7d, 1);
+    assert.equal(statsPayload.stats.insights.tracks7d, 1);
+    assert.equal(statsPayload.stats.insights.topArtists[0]?.artist, 'Artist A');
+    assert.equal(statsPayload.stats.insights.topKeywords[0]?.keyword, 'ambient');
+    assert.equal(statsPayload.stats.insights.activity7d.reduce((sum, bucket) => sum + bucket.plays, 0), 1);
 
     const clearHistoryResponse = await fetch(`${webServer.getDashboardUrl()}/api/database/clear-history`, { method: 'POST' });
     const clearHistoryPayload = await clearHistoryResponse.json() as {
       updated: boolean;
       removed: { plays: number; tracks: number; providerCache: number };
-      stats: { counts: { plays: number; tracks: number; providerCache: number } };
+      stats: {
+        counts: { plays: number; tracks: number; providerCache: number };
+        insights: {
+          plays7d: number;
+          tracks7d: number;
+          skipRate: number;
+          activity7d: Array<{ dayLabel: string; plays: number }>;
+          topArtists: Array<{ artist: string; plays: number }>;
+          topKeywords: Array<{ keyword: string; frequency: number }>;
+        };
+      };
     };
     assert.equal(clearHistoryResponse.status, 200);
     assert.equal(clearHistoryPayload.updated, true);
     assert.deepEqual(clearHistoryPayload.removed, { plays: 1, tracks: 1, providerCache: 0 });
     assert.deepEqual(clearHistoryPayload.stats.counts, { plays: 0, tracks: 0, providerCache: 1 });
+    assert.equal(clearHistoryPayload.stats.insights.plays7d, 0);
+    assert.equal(clearHistoryPayload.stats.insights.tracks7d, 0);
+    assert.equal(clearHistoryPayload.stats.insights.skipRate, 0);
+    assert.deepEqual(clearHistoryPayload.stats.insights.topArtists, []);
+    assert.deepEqual(clearHistoryPayload.stats.insights.topKeywords, []);
+    assert.equal(clearHistoryPayload.stats.insights.activity7d.reduce((sum, bucket) => sum + bucket.plays, 0), 0);
     assert.equal(mpv.stopCount, 1);
     assert.deepEqual(queueManager.getState(), { nowPlaying: null, queue: [], history: [] });
 
     const clearCacheResponse = await fetch(`${webServer.getDashboardUrl()}/api/database/clear-provider-cache`, { method: 'POST' });
     const clearCachePayload = await clearCacheResponse.json() as {
       removed: { plays: number; tracks: number; providerCache: number };
-      stats: { counts: { plays: number; tracks: number; providerCache: number } };
+      stats: {
+        counts: { plays: number; tracks: number; providerCache: number };
+        insights: {
+          skipRate: number;
+          topArtists: Array<unknown>;
+          topKeywords: Array<unknown>;
+        };
+      };
     };
     assert.equal(clearCacheResponse.status, 200);
     assert.deepEqual(clearCachePayload.removed, { plays: 0, tracks: 0, providerCache: 1 });
     assert.deepEqual(clearCachePayload.stats.counts, { plays: 0, tracks: 0, providerCache: 0 });
+    assert.equal(clearCachePayload.stats.insights.skipRate, 0);
+    assert.deepEqual(clearCachePayload.stats.insights.topArtists, []);
+    assert.deepEqual(clearCachePayload.stats.insights.topKeywords, []);
   } finally {
     await webServer.destroy();
     store.close();

@@ -175,15 +175,19 @@ Behavior:
 Files:
 
 - `src/web/web-server.ts`
+- `src/web/web-server-artwork-proxy.ts`
 - `src/web/state-broadcaster.ts`
 - `public/index.html`
 - `public/app.js`
 - `public/style.css`
+- `public/dashboard/*`
+- `public/styles/*`
 
 Endpoints:
 
 - `GET /api/status`
 - `GET /api/persona`
+- `GET /api/artwork?src=...`
 - `POST /api/persona`
 - `POST /api/volume`
 - `POST /api/daemon/stop`
@@ -195,20 +199,27 @@ Endpoints:
 
 Dashboard features:
 
-- now-playing state
-- queue preview
-- volume + mute controls
-- persona textarea
-- database stats
+- artwork-first now-playing shell
+- full-screen `Queue / Now Playing / Settings` tabs
+- read-only queue preview
+- pause, next, and volume controls
+- minimal `Dashboard` block at the top of `Settings`
+- curved 7-day line chart
+- asymmetric grid with `Plays`, `Tracks`, `Most artists`, and `Most tags`
+- persona textarea below the insights block
+- database stats and derived SQLite insights from `GET /api/database/stats`
 - manual cleanup buttons for history, provider cache, and full reset
 - explicit daemon stop button
+- same-origin artwork proxy for local rendering and palette extraction
 
 Important notes:
 
 - The dashboard no longer renders context badges.
 - `POST /api/persona` accepts only `taste`.
+- artwork theming reads proxied thumbnails instead of sampling remote image URLs directly.
 - Persona changes are broadcast to connected clients over WebSocket.
 - Dashboard taste edits can arrive through WebSocket or `POST /api/persona`.
+- `GET /api/database/stats` returns both raw counts and a smaller `insights` block with `plays7d`, `tracks7d`, skip rate, 7-day activity, top artists, and top tags. The dashboard uses the 7-day insight metrics, while the lower advanced section still shows raw DB counts.
 - Cleanup actions stop playback, clear runtime queue state, invalidate discover cache, then mutate SQLite.
 - `POST /api/daemon/stop` returns success first, then schedules the same shutdown path used by `sbotify stop`.
 - After a dashboard stop, the page stops reconnecting until sbotify is started again.

@@ -3,7 +3,7 @@
 // sbotify — MCP music server entry point
 // Bootstraps MCP server, audio engine, and web dashboard
 
-import { createMpvController, getMpvController } from './audio/mpv-controller.js';
+import { createMpvController, getMpvController, waitForMpvStartupWarmup } from './audio/mpv-controller.js';
 import { createYoutubeProvider } from './providers/youtube-provider.js';
 import { createWebServer, getWebServer } from './web/web-server.js';
 import { createQueueManager } from './queue/queue-manager.js';
@@ -53,6 +53,9 @@ async function bootstrapComponents(webServerOptions?: Pick<WebServerOptions, 'on
 
   try {
     mpv.init();
+    // node-mpv needs a short idle warmup before first playback, otherwise EOF
+    // can miss the stop signal and queued tracks will not auto-advance.
+    await waitForMpvStartupWarmup();
   } catch (err) {
     console.error('[sbotify] Audio engine unavailable:', (err as Error).message);
     console.error('[sbotify] MCP tools will return errors until mpv is installed.');

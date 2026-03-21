@@ -162,6 +162,149 @@ test('HistoryStore exposes stats and granular cleanup operations', () => {
   }
 });
 
+test('HistoryStore database stats include empty insights when no listening history exists', () => {
+  const dbPath = getTempDbPath();
+  try {
+    const store = new HistoryStore(dbPath);
+    const stats = store.getDatabaseStats();
+
+    assert.deepEqual(stats, {
+      dbPath,
+      counts: { plays: 0, tracks: 0, providerCache: 0 },
+      insights: {
+        plays7d: 0,
+        tracks7d: 0,
+        skipRate: 0,
+        activity7d: stats.insights.activity7d,
+        topArtists: [],
+        topKeywords: [],
+      },
+    });
+    assert.equal(stats.insights.activity7d.length, 7);
+    assert.ok(stats.insights.activity7d.every((bucket) => bucket.plays === 0));
+
+    store.close();
+  } finally {
+    cleanupDb(dbPath);
+  }
+});
+
+test('HistoryStore database stats expose dashboard insights from play history', () => {
+  const dbPath = getTempDbPath();
+  try {
+    const store = new HistoryStore(dbPath);
+    const now = Date.now();
+    const twoDaysAgo = now - (2 * 24 * 60 * 60 * 1000);
+    const yesterday = now - (24 * 60 * 60 * 1000);
+
+    const ambientPlay = store.recordPlay(createTrack({ title: 'Says', artist: 'Nils Frahm', duration: 200, ytVideoId: 'vid-a' }));
+    const secondAmbientPlay = store.recordPlay(createTrack({ title: 'Says', artist: 'Nils Frahm', duration: 200, ytVideoId: 'vid-a-2' }));
+    const electronicPlay = store.recordPlay(createTrack({ title: 'A New Error', artist: 'Moderat', duration: 240, ytVideoId: 'vid-b' }));
+
+    store.updatePlay(ambientPlay, { played_sec: 200, skipped: false });
+    store.updatePlay(secondAmbientPlay, { played_sec: 100, skipped: true });
+    store.updatePlay(electronicPlay, { played_sec: 180, skipped: false });
+
+    store.getDatabase().prepare('UPDATE plays SET started_at = ? WHERE id = ?').run(twoDaysAgo, ambientPlay);
+    store.getDatabase().prepare('UPDATE plays SET started_at = ? WHERE id = ?').run(yesterday, secondAmbientPlay);
+    store.getDatabase().prepare('UPDATE plays SET started_at = ? WHERE id = ?').run(now, electronicPlay);
+    store.updateTrackTags(normalizeTrackId('Nils Frahm', 'Says'), ['ambient', 'piano']);
+    store.updateTrackTags(normalizeTrackId('Moderat', 'A New Error'), ['electronic']);
+
+    const stats = store.getDatabaseStats();
+
+    assert.deepEqual(stats.counts, { plays: 3, tracks: 2, providerCache: 0 });
+    assert.equal(stats.insights.plays7d, 3);
+    assert.equal(stats.insights.tracks7d, 2);
+    assert.equal(stats.insights.activity7d.length, 7);
+    assert.equal(stats.insights.activity7d.reduce((sum, bucket) => sum + bucket.plays, 0), 3);
+    assert.equal(stats.insights.topArtists.length, 2);
+    assert.equal(stats.insights.topArtists[0]?.artist, 'Nils Frahm');
+    assert.equal(stats.insights.topArtists[0]?.plays, 2);
+    assert.equal(stats.insights.topKeywords.length, 3);
+    assert.equal(stats.insights.topKeywords[0]?.keyword, 'ambient');
+    assert.equal(stats.insights.topKeywords[0]?.frequency, 2);
+    assert.ok(stats.insights.skipRate > 0.32 && stats.insights.skipRate < 0.34);
+
+    store.close();
+  } finally {
+    cleanupDb(dbPath);
+  }
+});
+
+test('HistoryStore database stats cap artists to three and expose more tags for the two-row dashboard', () => {
+  const dbPath = getTempDbPath();
+  try {
+    const store = new HistoryStore(dbPath);
+    const tracks = [
+      { title: 'One', artist: 'Artist A', ytVideoId: 'a', tags: ['ambient'], plays: 4 },
+      { title: 'Two', artist: 'Artist B', ytVideoId: 'b', tags: ['piano'], plays: 3 },
+      { title: 'Three', artist: 'Artist C', ytVideoId: 'c', tags: ['jazz'], plays: 2 },
+      { title: 'Four', artist: 'Artist D', ytVideoId: 'd', tags: ['electronic'], plays: 1 },
+    ];
+
+    for (const track of tracks) {
+      for (let index = 0; index < track.plays; index += 1) {
+        store.recordPlay(createTrack({
+          title: track.title,
+          artist: track.artist,
+          ytVideoId: track.ytVideoId,
+        }));
+      }
+      store.updateTrackTags(normalizeTrackId(track.artist, track.title), track.tags);
+    }
+
+    const stats = store.getDatabaseStats();
+    assert.equal(stats.insights.plays7d, 10);
+    assert.equal(stats.insights.tracks7d, 4);
+    assert.equal(stats.insights.topArtists.length, 3);
+    assert.equal(stats.insights.topKeywords.length, 4);
+    assert.deepEqual(stats.insights.topArtists.map((item) => item.artist), ['Artist A', 'Artist B', 'Artist C']);
+    assert.deepEqual(stats.insights.topKeywords.map((item) => item.keyword), ['ambient', 'piano', 'jazz', 'electronic']);
+
+    store.close();
+  } finally {
+    cleanupDb(dbPath);
+  }
+});
+
+test('HistoryStore dashboard metrics only include the recent 7-day window', () => {
+  const dbPath = getTempDbPath();
+  try {
+    const store = new HistoryStore(dbPath);
+    const now = Date.now();
+    const eightDaysAgo = now - (8 * 24 * 60 * 60 * 1000);
+    const twoDaysAgo = now - (2 * 24 * 60 * 60 * 1000);
+    const yesterday = now - (24 * 60 * 60 * 1000);
+
+    const oldPlay = store.recordPlay(createTrack({ title: 'Old Track', artist: 'Old Artist', ytVideoId: 'old' }));
+    const recentAmbient = store.recordPlay(createTrack({ title: 'Recent One', artist: 'Recent Artist', ytVideoId: 'recent-1' }));
+    const recentAmbient2 = store.recordPlay(createTrack({ title: 'Recent One', artist: 'Recent Artist', ytVideoId: 'recent-2' }));
+    const recentJazz = store.recordPlay(createTrack({ title: 'Recent Two', artist: 'Another Artist', ytVideoId: 'recent-3' }));
+
+    store.getDatabase().prepare('UPDATE plays SET started_at = ? WHERE id = ?').run(eightDaysAgo, oldPlay);
+    store.getDatabase().prepare('UPDATE plays SET started_at = ? WHERE id = ?').run(twoDaysAgo, recentAmbient);
+    store.getDatabase().prepare('UPDATE plays SET started_at = ? WHERE id = ?').run(yesterday, recentAmbient2);
+    store.getDatabase().prepare('UPDATE plays SET started_at = ? WHERE id = ?').run(now, recentJazz);
+
+    store.updateTrackTags(normalizeTrackId('Old Artist', 'Old Track'), ['legacy']);
+    store.updateTrackTags(normalizeTrackId('Recent Artist', 'Recent One'), ['ambient']);
+    store.updateTrackTags(normalizeTrackId('Another Artist', 'Recent Two'), ['jazz']);
+
+    const stats = store.getDatabaseStats();
+
+    assert.deepEqual(stats.counts, { plays: 4, tracks: 3, providerCache: 0 });
+    assert.equal(stats.insights.plays7d, 3);
+    assert.equal(stats.insights.tracks7d, 2);
+    assert.deepEqual(stats.insights.topArtists.map((item) => item.artist), ['Recent Artist', 'Another Artist']);
+    assert.deepEqual(stats.insights.topKeywords.map((item) => item.keyword), ['ambient', 'jazz']);
+
+    store.close();
+  } finally {
+    cleanupDb(dbPath);
+  }
+});
+
 test('HistoryStore full reset preserves persona state', () => {
   const dbPath = getTempDbPath();
   try {

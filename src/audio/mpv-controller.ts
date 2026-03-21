@@ -7,12 +7,19 @@ import { EventEmitter } from 'events';
 import { unlinkSync } from 'fs';
 import { getIpcPath } from './platform-ipc-path.js';
 import { loadNodeMpvApi, resolvePreferredMpvBinary } from './node-mpv-bootstrap.js';
+
+export const MPV_STARTUP_WARMUP_MS = 500;
+
 export interface TrackMeta {
   id: string;
   title: string;
   artist?: string;
   duration?: number;
   thumbnail?: string;
+}
+
+export async function waitForMpvStartupWarmup(durationMs = MPV_STARTUP_WARMUP_MS): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, durationMs));
 }
 
 interface MpvState {

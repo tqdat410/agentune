@@ -10,6 +10,7 @@ import type { QueueManager } from '../queue/queue-manager.js';
 import { loadRuntimeConfig } from '../runtime/runtime-config.js';
 import { getTasteEngine } from '../taste/taste-engine.js';
 import { StateBroadcaster } from './state-broadcaster.js';
+import { handleArtworkProxy } from './web-server-artwork-proxy.js';
 import {
   getMimeType,
   getStaticFilePath,
@@ -198,6 +199,11 @@ export class WebServer {
       return;
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/artwork') {
+      await handleArtworkProxy(url, response);
+      return;
+    }
+
     if (url.pathname === '/api/database/stats' && request.method === 'GET') {
       const store = this.historyStore;
       if (!store) {
@@ -299,6 +305,33 @@ export class WebServer {
         return;
       }
       if (!this.mpv.isReady()) {
+        return;
+      }
+      if (message.type === 'pause') {
+        if (!this.mpv.getCurrentTrack() || !this.mpv.getIsPlaying()) {
+          return;
+        }
+        this.mpv.pause();
+        return;
+      }
+      if (message.type === 'playback-toggle') {
+        if (!this.mpv.getCurrentTrack()) {
+          return;
+        }
+        if (this.mpv.getIsPlaying()) {
+          this.mpv.pause();
+        } else {
+          this.mpv.resume();
+        }
+        return;
+      }
+      if (message.type === 'next') {
+        const queuePlaybackController = getQueuePlaybackController();
+        if (queuePlaybackController) {
+          void queuePlaybackController.skip().catch((error: Error) => {
+            console.error('[web-server] Next control failed', { error: error.message });
+          });
+        }
         return;
       }
       if (message.type === 'volume' && typeof message.level === 'number') {

@@ -82,14 +82,26 @@ sbotify/
 │   │   └── runtime-data-paths.ts
 │   └── web/
 │       ├── state-broadcaster.ts
+│       ├── web-server-artwork-proxy.test.ts
+│       ├── web-server-artwork-proxy.ts
 │       ├── web-server-database-cleanup.test.ts
 │       ├── web-server-database-cleanup.ts
 │       ├── web-server-helpers.ts
 │       └── web-server.ts
 ├── public/
 │   ├── app.js
+│   ├── dashboard/
+│   │   ├── constants.js
+│   │   ├── dom.js
+│   │   ├── insights.js
+│   │   ├── marquee.js
+│   │   ├── render.js
+│   │   ├── settings-api.js
+│   │   └── theme.js
 │   ├── index.html
-│   └── style.css
+│   ├── style.css
+│   └── styles/
+│       └── dashboard-settings.css
 ├── docs/
 ├── package.json
 ├── README.md
@@ -241,6 +253,7 @@ Current HTTP and WebSocket surface:
 
 - `GET /api/status`
 - `GET /api/persona`
+- `GET /api/artwork?src=...`
 - `POST /api/persona`
 - `POST /api/volume`
 - `POST /api/daemon/stop`
@@ -254,15 +267,19 @@ Current behavior:
 
 - `StateBroadcaster` publishes playback snapshots: playing, title, artist, thumbnail, position, duration, volume, muted, queue.
 - Persona data is fetched separately from `/api/persona`.
+- Artwork is fetched through `/api/artwork`, so the browser can render and sample thumbnails from a same-origin URL.
+- If `/api/artwork` fails, the dashboard image element falls back to the raw remote thumbnail URL so album art still renders on older daemons or proxy failures.
 - Persona changes are broadcast separately over WebSocket as `{ type: "persona", data: { taste } }`.
 - The dashboard includes:
-  - now-playing card
-- queue preview
-- volume and mute controls
-- persona textarea
-- database stats
-- cleanup buttons with 2-step confirm
-- explicit daemon stop button with 2-step confirm
+  - centered player shell with full-screen `Queue / Now Playing / Settings` tabs
+  - artwork-first now-playing view with marquee-on-overflow title
+  - artwork-driven ambient gradient theming for page background and glass surfaces
+  - pause, next, and volume controls
+  - read-only queue view
+  - top-of-settings `Dashboard` heading with a curved 7-day line chart
+  - asymmetric dashboard grid with 7-day `Plays`, 7-day `Tracks`, `Most artists`, and `Most tags`
+  - persona textarea below the dashboard block
+  - advanced maintenance section with DB path, provider-cache count, cleanup buttons, and explicit daemon stop
 
 Important details:
 
@@ -271,7 +288,8 @@ Important details:
 - The daemon is not tied to the proxy terminal anymore; explicit stop only.
 - The old dashboard context badge is gone.
 - `POST /api/persona` accepts only `taste`.
-- `public/app.js` loads initial playback and persona state with HTTP, then listens for live `state` and `persona` messages.
+- `GET /api/database/stats` now returns raw counts plus a smaller `insights` block sourced from SQLite aggregates: `plays7d`, `tracks7d`, `skipRate`, `activity7d`, top 3 artists, and enough top tags to fill the 2-row dashboard block.
+- `public/app.js` loads initial playback and persona state with HTTP, listens for live `state` and `persona` messages, and refetches dashboard stats when the Settings view needs a fresher snapshot.
 - Database cleanup actions stop playback, clear runtime queue state, then mutate SQLite.
 
 ## Tests and Validation

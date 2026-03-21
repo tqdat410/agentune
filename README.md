@@ -8,7 +8,7 @@ sbotify is a Model Context Protocol (MCP) server that enables coding agents (Cla
 
 - **Agent-driven music control**: Taste-aware `discover -> play_song/add_song -> feedback` flow via MCP
 - **Apple-only discover pipeline**: flat, paginated Apple candidates with optional `artist` / `keywords` seeds
-- **Browser dashboard**: Real-time now-playing info, volume slider, manual database cleanup, and an explicit daemon stop button on the configured dashboard port
+- **Browser dashboard**: Real-time now-playing info, lightweight listening insights from SQLite, manual database cleanup, and an explicit daemon stop button on the configured dashboard port
 - **Headless playback**: Audio plays independently via mpv (no browser needed)
 - **Cross-platform**: Works on Windows, macOS, Linux
 - **Zero-key resolver**: Apple Search API for canonical catalog lookup, yt-dlp for playback resolution
@@ -90,8 +90,10 @@ Current `discover` contract:
 
 Open the configured dashboard URL (default `http://localhost:3737`) in your browser to see:
 - Now-playing track (title, artist, progress)
+- Pause/resume + next playback controls
 - Volume slider
 - Live queue preview
+- Minimal listening insights (curved 7-day line chart, 7-day plays/tracks, top artists, top tags)
 - Persona taste editor
 - Database stats + manual cleanup actions
 - Explicit `Stop daemon` control
@@ -194,7 +196,7 @@ See [Project Roadmap](./docs/project-roadmap.md) for detailed timelines and depe
 ## Success Criteria
 
 - Agent can discover, play, queue, skip, and continue songs **without human intervention**
-- Browser dashboard displays now-playing + volume control
+- Browser dashboard displays now-playing, listening insights, and volume control
 - Audio plays **independently** (mpv headless mode)
 - **< 3 seconds** from "play" command to audio output
 - Works on **Windows, macOS, Linux**
