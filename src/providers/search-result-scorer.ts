@@ -8,9 +8,55 @@ export interface ScoredResult {
   reasons: string[];
 }
 
+const HARD_BLOCKED_VARIANTS = [
+  'cover',
+  'karaoke',
+  'instrumental',
+  'acoustic',
+  'piano',
+  'tribute',
+  'remake',
+  'fanmade',
+  'fan made',
+  'slowed',
+  'sped up',
+  'nightcore',
+  '8d',
+  'reverb',
+  'live',
+  'remix',
+  'teaser',
+  'preview',
+  'shorts',
+  'playlist',
+  'full album',
+] as const;
+
 /** Strip punctuation, collapse whitespace, normalize to lowercase for comparison. */
 function normalize(text: string): string {
   return text.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function tokenize(text: string): string[] {
+  const normalized = normalize(text);
+  return normalized ? normalized.split(' ') : [];
+}
+
+function containsPhrase(tokens: string[], phraseTokens: string[]): boolean {
+  if (phraseTokens.length === 0 || tokens.length < phraseTokens.length) return false;
+
+  for (let i = 0; i <= tokens.length - phraseTokens.length; i += 1) {
+    let matched = true;
+    for (let j = 0; j < phraseTokens.length; j += 1) {
+      if (tokens[i + j] !== phraseTokens[j]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) return true;
+  }
+
+  return false;
 }
 
 /** Known quality suffixes that YouTube appends — strip before title matching. */
@@ -48,7 +94,22 @@ function scoreTitleMatch(resultTitle: string, queryTitle: string): { score: numb
 
 /** Check if query text contains a keyword (case-insensitive). */
 function queryContains(query: string, keyword: string): boolean {
-  return normalize(query).includes(keyword);
+  return containsPhrase(tokenize(query), tokenize(keyword));
+}
+
+function getBlockedKeyword(result: SearchResult, fullQuery: string): string | null {
+  const titleTokens = tokenize(result.title);
+  const artistTokens = tokenize(result.artist);
+
+  for (const keyword of HARD_BLOCKED_VARIANTS) {
+    if (queryContains(fullQuery, keyword)) continue;
+    const keywordTokens = tokenize(keyword);
+    if (containsPhrase(titleTokens, keywordTokens) || containsPhrase(artistTokens, keywordTokens)) {
+      return keyword;
+    }
+  }
+
+  return null;
 }
 
 /** Score a single search result against canonical title/artist. */
@@ -132,7 +193,10 @@ export function scoreSearchResults(
   title: string,
   artist?: string,
 ): ScoredResult[] {
+  const fullQuery = artist ? `${artist} ${title}` : title;
+
   return results
+    .filter((result) => getBlockedKeyword(result, fullQuery) === null)
     .map((r) => scoreResult(r, title, artist))
     .sort((a, b) => b.score - a.score);
 }

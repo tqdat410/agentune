@@ -140,3 +140,141 @@ test('resolveSong falls back to a second YouTube query when the first query thro
     'Marconi Union Weightless',
   ]);
 });
+
+test('resolveSong skips blocked YouTube variants and keeps the original candidate', async () => {
+  const apple = new FakeAppleProvider([
+    {
+      title: 'Blinding Lights',
+      artist: 'The Weeknd',
+      album: 'After Hours',
+      genre: 'Pop',
+      durationMs: 200000,
+      artwork: '',
+    },
+  ]);
+  const youtube = new FakeYouTubeProvider({
+    'The Weeknd - Blinding Lights official audio': [
+      {
+        id: 'yt-cover',
+        title: 'Blinding Lights Cover',
+        artist: 'Cover Singer',
+        duration: '3:20',
+        durationMs: 200000,
+        thumbnail: 'thumb',
+        url: 'https://youtube.test/yt-cover',
+      },
+      {
+        id: 'yt-karaoke',
+        title: 'Blinding Lights',
+        artist: 'Karaoke Hits',
+        duration: '3:20',
+        durationMs: 200000,
+        thumbnail: 'thumb',
+        url: 'https://youtube.test/yt-karaoke',
+      },
+      {
+        id: 'yt-original',
+        title: 'The Weeknd - Blinding Lights (Official Audio)',
+        artist: 'The Weeknd',
+        duration: '3:20',
+        durationMs: 200000,
+        thumbnail: 'thumb',
+        url: 'https://youtube.test/yt-original',
+      },
+    ],
+    'The Weeknd Blinding Lights': [],
+  });
+
+  const resolved = await resolveSong(
+    youtube as never,
+    apple as never,
+    { title: 'Blinding Lights', artist: 'The Weeknd' },
+  );
+
+  assert.equal(resolved.matched, true);
+  assert.equal(resolved.result?.id, 'yt-original');
+  assert.deepEqual(resolved.alternatives, []);
+});
+
+test('resolveSong returns unmatched when every YouTube candidate is blocked', async () => {
+  const apple = new FakeAppleProvider([
+    {
+      title: 'Blinding Lights',
+      artist: 'The Weeknd',
+      album: 'After Hours',
+      genre: 'Pop',
+      durationMs: 200000,
+      artwork: '',
+    },
+  ]);
+  const youtube = new FakeYouTubeProvider({
+    'The Weeknd - Blinding Lights official audio': [
+      {
+        id: 'yt-cover',
+        title: 'Blinding Lights Cover',
+        artist: 'Cover Singer',
+        duration: '3:20',
+        durationMs: 200000,
+        thumbnail: 'thumb',
+        url: 'https://youtube.test/yt-cover',
+      },
+    ],
+    'The Weeknd Blinding Lights': [
+      {
+        id: 'yt-live',
+        title: 'Blinding Lights Live',
+        artist: 'The Weeknd',
+        duration: '3:20',
+        durationMs: 200000,
+        thumbnail: 'thumb',
+        url: 'https://youtube.test/yt-live',
+      },
+      {
+        id: 'yt-karaoke',
+        title: 'Blinding Lights',
+        artist: 'Karaoke Hits',
+        duration: '3:20',
+        durationMs: 200000,
+        thumbnail: 'thumb',
+        url: 'https://youtube.test/yt-karaoke',
+      },
+    ],
+  });
+
+  const resolved = await resolveSong(
+    youtube as never,
+    apple as never,
+    { title: 'Blinding Lights', artist: 'The Weeknd' },
+  );
+
+  assert.equal(resolved.matched, false);
+  assert.equal(resolved.matchScore, 0);
+  assert.deepEqual(resolved.alternatives, []);
+});
+
+test('resolveSong still resolves explicit variant queries when the keyword is requested', async () => {
+  const youtube = new FakeYouTubeProvider({
+    'Ed Sheeran - Shape of You Cover official audio': [],
+    'Ed Sheeran Shape of You Cover': [
+      {
+        id: 'yt-cover',
+        title: 'Shape of You Cover',
+        artist: 'Ed Sheeran Studio Duo',
+        duration: '3:45',
+        durationMs: 225000,
+        thumbnail: 'thumb',
+        url: 'https://youtube.test/yt-cover',
+      },
+    ],
+  });
+
+  const resolved = await resolveSong(
+    youtube as never,
+    null,
+    { title: 'Shape of You Cover', artist: 'Ed Sheeran' },
+  );
+
+  assert.equal(resolved.matched, true);
+  assert.equal(resolved.canonicalSource, 'input');
+  assert.equal(resolved.result?.id, 'yt-cover');
+});
