@@ -8,7 +8,7 @@ import type { DiscoverCandidate } from './discover-batch-builder.js';
 import { rankCandidates } from './discover-soft-ranker.js';
 
 function getTempDbPath(): string {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sbotify-discover-ranker-'));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentune-discover-ranker-'));
   return path.join(tempDir, 'history.db');
 }
 

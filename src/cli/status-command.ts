@@ -6,7 +6,7 @@ import { readPidFile, removePidFile } from '../daemon/pid-manager.js';
 export async function runStatus(): Promise<void> {
   const info = readPidFile();
   if (!info) {
-    console.error('[sbotify] Daemon is not running');
+    console.error('[agentune] Daemon is not running');
     process.exit(1);
   }
 
@@ -17,10 +17,10 @@ export async function runStatus(): Promise<void> {
     if (!res.ok) throw new Error('unhealthy');
     const data = await res.json() as { uptime: number };
     console.error(
-      `[sbotify] Daemon running — PID: ${info.pid}, Port: ${info.port}, Uptime: ${Math.floor(data.uptime)}s`
+      `[agentune] Daemon running — PID: ${info.pid}, Port: ${info.port}, Uptime: ${Math.floor(data.uptime)}s`
     );
   } catch {
-    console.error('[sbotify] Daemon PID file exists but not responding (stale)');
+    console.error('[agentune] Daemon PID file exists but not responding (stale)');
     removePidFile();
     process.exit(1);
   }

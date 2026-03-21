@@ -1,5 +1,52 @@
 # Project Changelog
 
+## 2026-03-21 (CLI-Only Publish Standardization)
+
+### Release Workflow
+- Standardized npm release flow around local-gated scripts in:
+  - `package.json`
+  - `scripts/publish-utils.mjs`
+  - `scripts/verify-publish.mjs`
+  - `scripts/release.mjs`
+  - `.npmignore`
+  - `LICENSE`
+- The package is now treated as CLI-only release surface:
+  - removed the root `main` entry from `package.json`
+  - kept only `bin.agentune`
+  - documented programmatic import as unsupported
+- Added publish metadata gates:
+  - `engines.node >= 20`
+  - `publishConfig.access = public`
+  - repository/homepage/bugs links for the GitHub repo
+- Added a manual-publish guard:
+  - raw `npm publish` now fails unless invoked by the release script
+- Added release commands:
+  - `npm run verify:publish`
+  - `npm run release:alpha -- --bump ...`
+  - `npm run release:stable -- --bump ...`
+
+### Tarball Hygiene
+- Tarball filtering now excludes compiled tests, sourcemaps, and test-helper artifacts from `dist/`.
+- `verify:publish` now checks:
+  - package metadata
+  - LICENSE presence
+  - build + test gate
+  - `npm pack --dry-run` file surface
+  - install-from-tarball smoke
+  - CLI-only import boundary
+
+### Documentation
+- Updated release guidance in:
+  - `README.md`
+  - `docs/project-roadmap.md`
+  - `docs/project-overview-pdr.md`
+- Added alpha channel install guidance and stable/alpha dist-tag policy.
+
+### Validation
+- `npm test`: 114 passed, 0 failed
+- `npm run verify:publish`: passed
+- `npm publish --dry-run`: intentionally blocked unless using `release:alpha` or `release:stable`
+
 ## 2026-03-21 (Resolver Original-Only Hard Blocking)
 
 ### Resolver Filtering

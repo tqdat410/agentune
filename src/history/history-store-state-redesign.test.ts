@@ -7,7 +7,7 @@ import test from 'node:test';
 import { HistoryStore } from './history-store.js';
 
 function getTempDbPath(): string {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sbotify-history-redesign-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentune-history-redesign-'));
   return path.join(tmpDir, 'history.db');
 }
 

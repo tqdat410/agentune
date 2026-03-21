@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-**sbotify** is an MCP (Model Context Protocol) server enabling coding agents to control music playback like a DJ while writing code. It bridges the gap between AI agents and music streaming by providing a lightweight, headless audio engine with agent-driven search, playback control, and browser-based visualization.
+**agentune** is an MCP (Model Context Protocol) server enabling coding agents to control music playback like a DJ while writing code. It bridges the gap between AI agents and music streaming by providing a lightweight, headless audio engine with agent-driven search, playback control, and browser-based visualization.
 
 ## Product Vision
 
@@ -62,7 +62,7 @@ Empower developers using AI coding assistants (Claude Code, Cursor, Codex) to en
 1. **Agent Autonomy**: Agent initiates music without human intervention (F1–F5)
 2. **Dashboard UX**: Real-time updates on browser with < 100ms latency
 3. **Reliability**: No crashes or playback interruptions during 8-hour session
-4. **Installation**: package is release-prepared and locally installable once publish is approved
+4. **Installation**: package ships through a gated CLI-only npm release workflow and stays locally installable from its tarball
 5. **Cross-platform**: Same code/behavior on Windows, macOS, Linux
 
 ## Constraints & Dependencies
@@ -78,6 +78,7 @@ Empower developers using AI coding assistants (Claude Code, Cursor, Codex) to en
 - Node.js 20+ (LTS)
 - mpv (audio engine)
 - yt-dlp (Python-based audio extraction)
+- npm account authentication for alpha/stable publish steps
 
 ### Architecture Dependencies
 1. Phase 1 (Setup) → Phase 2 (MCP) → Phase 3 (mpv) → Phase 4 (YouTube)
@@ -135,7 +136,7 @@ Agent can execute this conversation **without human intervention**:
 
 ```
 Agent: "Play lo-fi beats for focus"
-[sbotify searches YouTube, plays first result]
+[agentune searches YouTube, plays first result]
 [Browser shows now-playing: "lo-fi beats 🎧"]
 
 Agent: "This is too upbeat. Try something more chill."
@@ -146,7 +147,7 @@ Agent: "Skip this one"
 [Next track plays immediately]
 
 Agent: "What's playing now?"
-[Agent reads metadata from sbotify]
+[Agent reads metadata from agentune]
 ```
 
 All without human clicking, confirmation, or intervention.

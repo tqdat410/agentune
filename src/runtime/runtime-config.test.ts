@@ -6,7 +6,7 @@ import test from 'node:test';
 import { loadRuntimeConfig, resetRuntimeConfigCache } from './runtime-config.js';
 
 function createTempDataDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'sbotify-runtime-config-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'agentune-runtime-config-'));
 }
 
 function cleanupDataDir(dataDir: string): void {
@@ -18,9 +18,9 @@ function cleanupDataDir(dataDir: string): void {
 }
 
 test('loadRuntimeConfig creates default config when missing', () => {
-  const previous = process.env.SBOTIFY_DATA_DIR;
+  const previous = process.env.AGENTUNE_DATA_DIR;
   const dataDir = createTempDataDir();
-  process.env.SBOTIFY_DATA_DIR = dataDir;
+  process.env.AGENTUNE_DATA_DIR = dataDir;
   resetRuntimeConfigCache();
 
   try {
@@ -36,34 +36,34 @@ test('loadRuntimeConfig creates default config when missing', () => {
     assert.equal(fs.existsSync(configPath), true);
     assert.deepEqual(JSON.parse(fs.readFileSync(configPath, 'utf8')), config);
   } finally {
-    if (previous === undefined) delete process.env.SBOTIFY_DATA_DIR;
-    else process.env.SBOTIFY_DATA_DIR = previous;
+    if (previous === undefined) delete process.env.AGENTUNE_DATA_DIR;
+    else process.env.AGENTUNE_DATA_DIR = previous;
     resetRuntimeConfigCache();
     cleanupDataDir(dataDir);
   }
 });
 
 test('loadRuntimeConfig rejects invalid port values', () => {
-  const previous = process.env.SBOTIFY_DATA_DIR;
+  const previous = process.env.AGENTUNE_DATA_DIR;
   const dataDir = createTempDataDir();
-  process.env.SBOTIFY_DATA_DIR = dataDir;
+  process.env.AGENTUNE_DATA_DIR = dataDir;
   fs.writeFileSync(path.join(dataDir, 'config.json'), JSON.stringify({ dashboardPort: 0, daemonPort: 3747 }));
   resetRuntimeConfigCache();
 
   try {
     assert.throws(() => loadRuntimeConfig(), /dashboardPort must be an integer between 1 and 65535/i);
   } finally {
-    if (previous === undefined) delete process.env.SBOTIFY_DATA_DIR;
-    else process.env.SBOTIFY_DATA_DIR = previous;
+    if (previous === undefined) delete process.env.AGENTUNE_DATA_DIR;
+    else process.env.AGENTUNE_DATA_DIR = previous;
     resetRuntimeConfigCache();
     cleanupDataDir(dataDir);
   }
 });
 
 test('loadRuntimeConfig rejects invalid auto-start values', () => {
-  const previous = process.env.SBOTIFY_DATA_DIR;
+  const previous = process.env.AGENTUNE_DATA_DIR;
   const dataDir = createTempDataDir();
-  process.env.SBOTIFY_DATA_DIR = dataDir;
+  process.env.AGENTUNE_DATA_DIR = dataDir;
   fs.writeFileSync(path.join(dataDir, 'config.json'), JSON.stringify({
     dashboardPort: 3737,
     daemonPort: 3747,
@@ -74,18 +74,18 @@ test('loadRuntimeConfig rejects invalid auto-start values', () => {
   try {
     assert.throws(() => loadRuntimeConfig(), /autoStartDaemon must be a boolean/i);
   } finally {
-    if (previous === undefined) delete process.env.SBOTIFY_DATA_DIR;
-    else process.env.SBOTIFY_DATA_DIR = previous;
+    if (previous === undefined) delete process.env.AGENTUNE_DATA_DIR;
+    else process.env.AGENTUNE_DATA_DIR = previous;
     resetRuntimeConfigCache();
     cleanupDataDir(dataDir);
   }
 });
 
 test('loadRuntimeConfig merges missing config fields, writes them back, and rejects invalid ranking values', () => {
-  const previous = process.env.SBOTIFY_DATA_DIR;
+  const previous = process.env.AGENTUNE_DATA_DIR;
   const dataDir = createTempDataDir();
   const configPath = path.join(dataDir, 'config.json');
-  process.env.SBOTIFY_DATA_DIR = dataDir;
+  process.env.AGENTUNE_DATA_DIR = dataDir;
   fs.writeFileSync(configPath, JSON.stringify({
     dashboardPort: 3838,
     daemonPort: 3848,
@@ -113,8 +113,8 @@ test('loadRuntimeConfig merges missing config fields, writes them back, and reje
     });
     assert.deepEqual(JSON.parse(fs.readFileSync(configPath, 'utf8')), config);
   } finally {
-    if (previous === undefined) delete process.env.SBOTIFY_DATA_DIR;
-    else process.env.SBOTIFY_DATA_DIR = previous;
+    if (previous === undefined) delete process.env.AGENTUNE_DATA_DIR;
+    else process.env.AGENTUNE_DATA_DIR = previous;
     resetRuntimeConfigCache();
     cleanupDataDir(dataDir);
   }

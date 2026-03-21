@@ -1,8 +1,10 @@
-# sbotify
+# agentune
 
 **MCP music server — let your coding agent be your DJ.**
 
-sbotify is a Model Context Protocol (MCP) server that enables coding agents (Claude Code, Cursor, Codex) to control music playback like a professional DJ. Discover tracks from your current taste state, play songs immediately, add songs to the queue, and keep a shared listening session moving — all through natural language while your agent writes code.
+agentune is a Model Context Protocol (MCP) server that enables coding agents (Claude Code, Cursor, Codex) to control music playback like a professional DJ. Discover tracks from your current taste state, play songs immediately, add songs to the queue, and keep a shared listening session moving — all through natural language while your agent writes code.
+
+> CLI-only package: install and run `agentune` as a command. Programmatic `import 'agentune'` is not a supported interface.
 
 ## Features
 
@@ -24,35 +26,41 @@ sbotify is a Model Context Protocol (MCP) server that enables coding agents (Cla
 **macOS:**
 ```bash
 brew install mpv yt-dlp
-npm install -g sbotify
+npm install -g agentune
 ```
 
 **Ubuntu/Debian:**
 ```bash
 sudo apt-get install mpv python3-pip
 pip install yt-dlp
-npm install -g sbotify
+npm install -g agentune
 ```
 
 **Windows:**
 ```bash
 # Install via scoop or download binaries
 scoop install mpv yt-dlp
-npm install -g sbotify
+npm install -g agentune
+```
+
+For prerelease testing from npm, install the alpha channel explicitly:
+
+```bash
+npm install -g agentune@alpha
 ```
 
 ### Start the Server
 
 ```bash
-sbotify
+agentune
 # Listens on stdio for MCP (agent) + HTTP on the configured dashboard port (default: localhost:3737)
 ```
 
 Control the daemon explicitly when needed:
 
 ```bash
-sbotify start
-sbotify stop
+agentune start
+agentune stop
 ```
 
 ### MCP Configuration (Claude Code)
@@ -62,8 +70,8 @@ Add to your `Claude.md` or claude config:
 ```json
 {
   "mcpServers": {
-    "sbotify": {
-      "command": "sbotify",
+    "agentune": {
+      "command": "agentune",
       "args": [],
       "disabled": false
     }
@@ -100,7 +108,7 @@ Open the configured dashboard URL (default `http://localhost:3737`) in your brow
 
 ### Runtime Config
 
-On first run, sbotify creates `${SBOTIFY_DATA_DIR || ~/.sbotify}/config.json`:
+On first run, agentune creates `${AGENTUNE_DATA_DIR || ~/.agentune}/config.json`:
 
 ```json
 {
@@ -116,15 +124,15 @@ On first run, sbotify creates `${SBOTIFY_DATA_DIR || ~/.sbotify}/config.json`:
 }
 ```
 
-Both ports are exact. If either port is already in use, startup fails instead of falling back to another port. `defaultVolume` sets the initial mpv volume on daemon startup, `autoStartDaemon` controls whether `sbotify` auto-spawns the daemon when a coding session connects, and `discoverRanking` provides the fixed reranking weights used by `discover()`.
+Both ports are exact. If either port is already in use, startup fails instead of falling back to another port. `defaultVolume` sets the initial mpv volume on daemon startup, `autoStartDaemon` controls whether `agentune` auto-spawns the daemon when a coding session connects, and `discoverRanking` provides the fixed reranking weights used by `discover()`.
 
 If `autoStartDaemon` is `false`, start the daemon yourself before connecting:
 
 ```bash
-sbotify start
+agentune start
 ```
 
-The daemon stays alive after the coding session closes. It stops only when you run `sbotify stop` or click `Stop daemon` in the dashboard.
+The daemon stays alive after the coding session closes. It stops only when you run `agentune stop` or click `Stop daemon` in the dashboard.
 
 ## Architecture Overview
 
@@ -133,7 +141,7 @@ Coding Agent (Claude Code/Cursor)
     │ stdio (MCP Protocol)
     ▼
 ┌─────────────────────────────────────┐
-│    sbotify MCP Server (Node.js)     │
+│    agentune MCP Server (Node.js)    │
 ├─────────────────────────────────────┤
 │  • MCP Tool Definitions (Phase 2)   │
 │  • mpv Audio Engine (Phase 3)       │
@@ -150,7 +158,7 @@ Coding Agent (Claude Code/Cursor)
 ## Key Design Principles
 
 1. **Never console.log()** — corrupts MCP stdio protocol. Use `console.error()` for debug.
-2. **IPC Protocol**: Named pipes on Windows (`\\.\pipe\sbotify`), Unix sockets on Unix (`/tmp/sbotify-mpv`)
+2. **IPC Protocol**: Named pipes on Windows (`\\.\pipe\agentune-mpv`), Unix sockets on Unix (`/tmp/agentune-mpv`)
 3. **Error Handling**: Return `{isError: true, message: "..."}` instead of throwing
 4. **Stream URLs**: YouTube streams expire after ~6 hours; always fetch fresh
 
@@ -179,6 +187,28 @@ npm run build
 npm start
 ```
 
+## Release
+
+`agentune` uses a local-gated release flow. Do not publish it with raw `npm publish`.
+
+```bash
+# One-time auth
+npm login
+
+# Verify package metadata, tarball contents, and install smoke
+npm run verify:publish
+
+# Publish an alpha prerelease to dist-tag "alpha"
+npm run release:alpha -- --bump prerelease
+
+# Publish a stable release from main to dist-tag "latest"
+npm run release:stable -- --bump patch
+```
+
+- Alpha releases publish SemVer prereleases such as `0.2.0-alpha.1` to `alpha`.
+- Stable releases publish normal SemVer versions such as `0.2.0` to `latest`.
+- The release scripts enforce clean git state, remote sync, build/test gates, tarball smoke checks, and npm dist-tag selection.
+
 ## Phase Timeline
 
 | Phase | Focus | Status |
@@ -200,7 +230,7 @@ See [Project Roadmap](./docs/project-roadmap.md) for detailed timelines and depe
 - Audio plays **independently** (mpv headless mode)
 - **< 3 seconds** from "play" command to audio output
 - Works on **Windows, macOS, Linux**
-- **npm install -g sbotify** prepared (publish intentionally deferred)
+- **npm install -g agentune** prepared (publish intentionally deferred)
 
 ## Contributing
 

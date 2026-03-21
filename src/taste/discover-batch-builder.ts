@@ -69,7 +69,7 @@ export class DiscoverBatchBuilder {
       const tracks = await this.apple.getArtistTracks(artist, ARTIST_RESULT_LIMIT);
       return tracks.map((track) => mapArtistTrack(track));
     } catch (err) {
-      console.error(`[sbotify] Discover artist batch failed for "${artist}": ${(err as Error).message}`);
+      console.error(`[agentune] Discover artist batch failed for "${artist}": ${(err as Error).message}`);
       return [];
     }
   }
@@ -79,7 +79,7 @@ export class DiscoverBatchBuilder {
       const tracks = await this.apple.searchByGenre(keyword, GENRE_RESULT_LIMIT);
       return tracks.map((track) => mapKeywordTrack(track, keyword));
     } catch (err) {
-      console.error(`[sbotify] Discover keyword batch failed for "${keyword}": ${(err as Error).message}`);
+      console.error(`[agentune] Discover keyword batch failed for "${keyword}": ${(err as Error).message}`);
       return [];
     }
   }

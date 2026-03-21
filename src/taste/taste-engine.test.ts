@@ -7,7 +7,7 @@ import { HistoryStore } from '../history/history-store.js';
 import { TasteEngine, createTasteEngine } from './taste-engine.js';
 
 function getTempDbPath(): string {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sbotify-taste-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentune-taste-'));
   return path.join(tmpDir, 'taste.db');
 }
 

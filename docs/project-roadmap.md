@@ -2,7 +2,7 @@
 
 ## Current State
 
-`sbotify` is functionally in MVP-complete territory for local agent-controlled playback:
+`agentune` is functionally in MVP-complete territory for local agent-controlled playback:
 
 - daemon + proxy architecture: complete
 - queue-based playback: complete
@@ -13,15 +13,18 @@
 - config-driven discover ranking: complete
 - agent-facing discover guidance cleanup: complete
 - explicit daemon lifecycle + dashboard stop: complete
-- optional daemon auto-start + manual `sbotify start`: complete
+- optional daemon auto-start + manual `agentune start`: complete
+- web/dashboard hardening + safer daemon stop: complete
 - discover rewrite automated validation: complete
+- local-gated npm release workflow: complete
 - daemon/MCP end-to-end smoke record: pending
 
 Last validated:
 
 - `2026-03-21`
 - `npm run build`: passed
-- `npm test`: 99 passed, 0 failed
+- `npm test`: 114 passed, 0 failed
+- `npm run verify:publish`: passed
 - built-handler smoke: `discover({ artist: "Nils Frahm", limit: 1 })` returned a paginated Apple candidate
 
 ## Completed Milestones
@@ -86,20 +89,20 @@ Next work:
 
 ### 3. Release Readiness
 
-Status: pending
+Status: in progress
 
 Next work:
 
-- polish install/run docs for real users
+- publish and validate an `alpha` prerelease from the new gated flow
 - validate Windows/macOS/Linux prerequisites end-to-end
-- decide when to publish the package
+- decide when to promote the first stable `latest` release
 
 ## Near-Term Backlog
 
 - more direct MCP coverage around discover pagination and cache invalidation
 - more daemon/proxy end-to-end coverage for taste updates
 - optional richer dashboard controls
-- publish checklist for npm release
+- cross-platform release rehearsal notes for npm publish
 
 ## Explicitly Removed from the Current Direction
 

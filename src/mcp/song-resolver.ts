@@ -168,7 +168,7 @@ async function searchYoutubeWithFallback(
       scoredPools.push(scoreSearchResults(results, title, artist));
     } catch (err) {
       lastError = err as Error;
-      console.error(`[sbotify] Resolver query failed "${query}": ${lastError.message}`);
+      console.error(`[agentune] Resolver query failed "${query}": ${lastError.message}`);
     }
   }
 

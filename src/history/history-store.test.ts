@@ -7,7 +7,7 @@ import { normalizeTrackId } from './history-schema.js';
 import { HistoryStore } from './history-store.js';
 
 function getTempDbPath(): string {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sbotify-history-store-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentune-history-store-'));
   return path.join(tmpDir, 'history.db');
 }
 

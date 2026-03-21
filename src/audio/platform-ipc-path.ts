@@ -3,6 +3,6 @@
 
 export function getIpcPath(): string {
   return process.platform === 'win32'
-    ? '\\\\.\\pipe\\sbotify-mpv'
-    : '/tmp/sbotify-mpv';
+    ? '\\\\.\\pipe\\agentune-mpv'
+    : '/tmp/agentune-mpv';
 }

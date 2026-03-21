@@ -556,7 +556,7 @@ export function createHistoryStore(): HistoryStore {
   if (!historyStore) {
     const dbPath = getHistoryDbPath();
     historyStore = new HistoryStore(dbPath);
-    console.error(`[sbotify] History DB initialized at ${dbPath}`);
+    console.error(`[agentune] History DB initialized at ${dbPath}`);
   }
   return historyStore;
 }

@@ -2,8 +2,8 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-const DATA_DIR_ENV = 'SBOTIFY_DATA_DIR';
-const DEFAULT_DATA_DIR_NAME = '.sbotify';
+const DATA_DIR_ENV = 'AGENTUNE_DATA_DIR';
+const DEFAULT_DATA_DIR_NAME = '.agentune';
 
 export function getDataDir(): string {
   return process.env[DATA_DIR_ENV] || path.join(os.homedir(), DEFAULT_DATA_DIR_NAME);

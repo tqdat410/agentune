@@ -96,7 +96,7 @@ export class QueuePlaybackController {
             store.updatePlay(this.currentPlayId, { played_sec: Math.round(position), skipped: true });
           }
         } catch (err) {
-          console.error('[sbotify] Failed to record skip:', (err as Error).message);
+          console.error('[agentune] Failed to record skip:', (err as Error).message);
         }
         this.currentPlayId = null;
       }
@@ -154,7 +154,7 @@ export class QueuePlaybackController {
             store.updatePlay(this.currentPlayId, { played_sec: nowPlaying.duration, skipped: false });
           }
         } catch (err) {
-          console.error('[sbotify] Failed to record finish:', (err as Error).message);
+          console.error('[agentune] Failed to record finish:', (err as Error).message);
         }
         this.currentPlayId = null;
       }
@@ -176,7 +176,7 @@ export class QueuePlaybackController {
       const trackId = normalizeTrackId(artist, title);
       store.updateTrackTags(trackId, genres);
     } catch (err) {
-      console.error('[sbotify] Tag enrichment failed:', (err as Error).message);
+      console.error('[agentune] Tag enrichment failed:', (err as Error).message);
     }
   }
 
@@ -213,7 +213,7 @@ export class QueuePlaybackController {
     if (this.prefetchedAudio && this.prefetchedAudio.id === id) {
       audio = this.prefetchedAudio.audio;
       this.prefetchedAudio = null;
-      console.error('[sbotify] Using pre-fetched audio for:', id);
+      console.error('[agentune] Using pre-fetched audio for:', id);
     } else {
       audio = await this.youtubeProvider.getAudioUrl(id);
     }
@@ -239,16 +239,16 @@ export class QueuePlaybackController {
     if (this.prefetchInProgress === nextItem.id) return;  // already fetching
 
     this.prefetchInProgress = nextItem.id;
-    console.error('[sbotify] Pre-fetching audio for next track:', nextItem.title);
+    console.error('[agentune] Pre-fetching audio for next track:', nextItem.title);
 
     this.youtubeProvider.getAudioUrl(nextItem.id).then((audio) => {
       // Only store if the queue hasn't changed
       if (this.queueManager.peek()?.id === nextItem.id) {
         this.prefetchedAudio = { id: nextItem.id, audio };
-        console.error('[sbotify] Pre-fetch complete for:', nextItem.title);
+        console.error('[agentune] Pre-fetch complete for:', nextItem.title);
       }
     }).catch((err) => {
-      console.error('[sbotify] Pre-fetch failed:', (err as Error).message);
+      console.error('[agentune] Pre-fetch failed:', (err as Error).message);
     }).finally(() => {
       this.prefetchInProgress = null;
     });
@@ -265,7 +265,7 @@ export class QueuePlaybackController {
         store.updatePlay(this.currentPlayId, { played_sec: Math.round(position), skipped: true });
       }
     } catch (err) {
-      console.error('[sbotify] Failed to record interrupted play:', (err as Error).message);
+      console.error('[agentune] Failed to record interrupted play:', (err as Error).message);
     }
 
     this.currentPlayId = null;
@@ -302,7 +302,7 @@ export class QueuePlaybackController {
         );
       }
     } catch (err) {
-      console.error('[sbotify] Failed to record play:', (err as Error).message);
+      console.error('[agentune] Failed to record play:', (err as Error).message);
     }
 
     this.enrichTrackTags(queueItem.artist, queueItem.title);

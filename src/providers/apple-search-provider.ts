@@ -118,7 +118,7 @@ export class AppleSearchProvider {
       clearTimeout(timeout);
 
       if (!response.ok) {
-        console.error(`[sbotify] Apple API error: ${response.status} ${response.statusText}`);
+        console.error(`[agentune] Apple API error: ${response.status} ${response.statusText}`);
         return null;
       }
 
@@ -136,7 +136,7 @@ export class AppleSearchProvider {
         artistId: r.artistId,
       }));
     } catch (err) {
-      console.error(`[sbotify] Apple fetch failed: ${(err as Error).message}`);
+      console.error(`[agentune] Apple fetch failed: ${(err as Error).message}`);
       return null;
     }
   }

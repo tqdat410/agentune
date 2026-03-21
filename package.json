@@ -1,14 +1,18 @@
 {
-  "name": "sbotify",
+  "name": "agentune",
   "version": "0.1.0",
   "description": "MCP music server — let your coding agent be your DJ",
   "type": "module",
-  "main": "dist/index.js",
   "bin": {
-    "sbotify": "dist/index.js"
+    "agentune": "dist/index.js"
   },
   "files": [
     "dist/",
+    "!dist/**/*.map",
+    "!dist/**/*.test.js",
+    "!dist/**/*.test.d.ts",
+    "!dist/**/*test-helper*.js",
+    "!dist/**/*test-helper*.d.ts",
     "public/"
   ],
   "scripts": {
@@ -16,7 +20,12 @@
     "build": "npm run clean && tsc",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
-    "test": "npm run build && node --test dist/**/*.test.js"
+    "test:compiled": "node --test dist/**/*.test.js",
+    "test": "npm run build && npm run test:compiled",
+    "verify:publish": "node scripts/verify-publish.mjs",
+    "release:alpha": "node scripts/release.mjs alpha",
+    "release:stable": "node scripts/release.mjs stable",
+    "prepublishOnly": "node -e \"if (!process.env.AGENTUNE_RELEASE_MODE) { console.error('Use npm run release:alpha or npm run release:stable'); process.exit(1); }\""
   },
   "keywords": [
     "mcp",
@@ -26,6 +35,20 @@
     "youtube",
     "mpv"
   ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tqdat410/sbotify-mcp.git"
+  },
+  "homepage": "https://github.com/tqdat410/sbotify-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/tqdat410/sbotify-mcp/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT",
   "dependencies": {
     "@distube/ytsr": "^2.0.4",

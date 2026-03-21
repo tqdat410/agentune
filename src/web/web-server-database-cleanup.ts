@@ -10,6 +10,8 @@ export interface DatabaseActionResponse {
   message: string;
 }
 
+let databaseActionLock = Promise.resolve();
+
 export function getDatabaseStatsPayload(store: HistoryStore): { stats: ReturnType<HistoryStore['getDatabaseStats']> } {
   return { stats: store.getDatabaseStats() };
 }
@@ -19,31 +21,49 @@ export async function runDatabaseAction(
   store: HistoryStore,
   queuePlaybackController: QueuePlaybackController | null,
 ): Promise<DatabaseActionResponse> {
-  if (queuePlaybackController) {
-    await queuePlaybackController.stopAndResetRuntimeState();
+  return await withDatabaseActionLock(async () => {
+    if (queuePlaybackController) {
+      await queuePlaybackController.stopAndResetRuntimeState();
+    }
+
+    let result: HistoryCleanupResult;
+    let message: string;
+
+    if (action === 'clear-history') {
+      result = store.clearHistory();
+      message = 'Listening history cleared.';
+    } else if (action === 'clear-provider-cache') {
+      result = store.clearProviderCache();
+      message = 'Provider cache cleared.';
+    } else {
+      result = store.fullReset();
+      message = 'History and provider cache cleared.';
+    }
+
+    invalidateDiscoverCache();
+
+    return {
+      updated: true,
+      action,
+      removed: result.removed,
+      stats: result.stats,
+      message,
+    };
+  });
+}
+
+async function withDatabaseActionLock<T>(operation: () => Promise<T>): Promise<T> {
+  const previous = databaseActionLock;
+  let release!: () => void;
+  databaseActionLock = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  await previous;
+
+  try {
+    return await operation();
+  } finally {
+    release();
   }
-
-  let result: HistoryCleanupResult;
-  let message: string;
-
-  if (action === 'clear-history') {
-    result = store.clearHistory();
-    message = 'Listening history cleared.';
-  } else if (action === 'clear-provider-cache') {
-    result = store.clearProviderCache();
-    message = 'Provider cache cleared.';
-  } else {
-    result = store.fullReset();
-    message = 'History and provider cache cleared.';
-  }
-
-  invalidateDiscoverCache();
-
-  return {
-    updated: true,
-    action,
-    removed: result.removed,
-    stats: result.stats,
-    message,
-  };
 }

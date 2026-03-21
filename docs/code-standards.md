@@ -129,11 +129,11 @@ async function play(videoId: string) {
 
 ```typescript
 // ✓ Correct
-console.error('[sbotify] Starting...');
+console.error('[agentune] Starting...');
 console.error('[mpv] Volume set to:', volume);
 
 // ✗ Wrong
-console.log('[sbotify] Starting...'); // Breaks MCP!
+console.log('[agentune] Starting...'); // Breaks MCP!
 ```
 
 ### Debug Format
@@ -169,7 +169,7 @@ async function main() {
   try {
     // await async operations
   } catch (err) {
-    console.error('[sbotify] Fatal error:', err);
+    console.error('[agentune] Fatal error:', err);
     process.exit(1);
   }
 }

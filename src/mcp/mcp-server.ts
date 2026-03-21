@@ -135,11 +135,11 @@ export function registerMcpTools(server: McpServer): void {
 
 /** Create MCP server with stdio transport (legacy/direct mode) */
 export async function createStdioMcpServer(): Promise<McpServer> {
-  const server = new McpServer({ name: "sbotify", version: "0.1.0" });
+  const server = new McpServer({ name: "agentune", version: "0.1.0" });
   registerMcpTools(server);
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("[sbotify] MCP server started on stdio");
+  console.error("[agentune] MCP server started on stdio");
   return server;
 }
 
@@ -176,7 +176,7 @@ export function createHttpMcpHandler(): {
           if (sid) sessions.delete(sid);
         };
         try {
-          const server = new McpServer({ name: 'sbotify', version: '0.1.0' });
+          const server = new McpServer({ name: 'agentune', version: '0.1.0' });
           registerMcpTools(server);
           await server.connect(transport);
           await transport.handleRequest(req, res, body);
