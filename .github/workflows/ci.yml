@@ -29,9 +29,6 @@ jobs:
           - windows-latest
           - macos-latest
 
-    env:
-      AGENTUNE_DATA_DIR: ${{ runner.temp }}/agentune-data
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -69,7 +66,11 @@ jobs:
           "C:\ProgramData\chocolatey\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Verify packaged CLI
+        env:
+          AGENTUNE_DATA_DIR: ${{ runner.temp }}/agentune-data
         run: npm run verify:publish
 
       - name: Run doctor diagnostics
+        env:
+          AGENTUNE_DATA_DIR: ${{ runner.temp }}/agentune-data
         run: node dist/index.js doctor
