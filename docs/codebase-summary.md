@@ -13,6 +13,8 @@
 - `agentune stop` now waits for graceful shutdown first and only falls back to a verified process kill.
 - The daemon PID file now also carries a per-process control token used by `/mcp` and `/shutdown`.
 - The dashboard now bootstraps a per-process session token into HTML and requires that token for local API, artwork-proxy, and WebSocket access.
+- Audio control now talks to `mpv` through a small internal JSON IPC client instead of the stale `node-mpv` wrapper package.
+- Tarball publish verification now rejects unexpected install deprecation warnings and explicitly allows only the residual `better-sqlite3 -> prebuild-install` warning.
 
 The active state redesign is agent-first:
 
@@ -37,7 +39,11 @@ agentune/
 │   ├── index.ts
 │   ├── audio/
 │   │   ├── mpv-controller.ts
-│   │   ├── node-mpv-bootstrap.ts
+│   │   ├── mpv-ipc-client.test.ts
+│   │   ├── mpv-ipc-client.ts
+│   │   ├── mpv-launch-helpers.test.ts
+│   │   ├── mpv-launch-helpers.ts
+│   │   ├── mpv-process-session.ts
 │   │   └── platform-ipc-path.ts
 │   ├── cli/
 │   │   ├── start-command.ts
@@ -78,8 +84,6 @@ agentune/
 │   │   ├── discover-soft-ranker.ts
 │   │   ├── taste-engine.ts
 │   │   └── taste-engine.test.ts
-│   ├── types/
-│   │   └── node-mpv.d.ts
 │   ├── runtime/
 │   │   ├── runtime-config.test.ts
 │   │   ├── runtime-config.ts
@@ -233,13 +237,17 @@ Files:
 - `src/queue/queue-manager.ts`
 - `src/queue/queue-playback-controller.ts`
 - `src/audio/mpv-controller.ts`
-- `src/audio/node-mpv-bootstrap.ts`
+- `src/audio/mpv-ipc-client.ts`
+- `src/audio/mpv-launch-helpers.ts`
+- `src/audio/mpv-process-session.ts`
 
 Current responsibilities:
 
 - `QueueManager` owns `nowPlaying`, queued items, and playback history.
 - `QueuePlaybackController` resolves audio, starts playback, records plays, updates skip/completion status, and advances the queue.
 - `MpvController` owns the actual audio engine and emits playback state.
+- `MpvProcessSession` launches `mpv`, retries IPC connection until the socket is ready, and subscribes to `pause` / `idle-active` property changes.
+- `MpvIpcClient` is a newline-delimited JSON IPC transport with request-id correlation and out-of-order reply handling.
 
 Important details:
 
@@ -247,7 +255,8 @@ Important details:
 - Playback feedback remains as raw history rows; there is no secondary taste-update path.
 - The controller still enriches track tags from Apple after playback begins.
 - The next queued track can be prefetched for smoother transitions.
-- On Windows, `node-mpv` is bootstrapped through a small spawn patch so managed `mpv` children start hidden, and the launcher prefers `mpv.exe` when available to avoid blank console windows.
+- On Windows, the internal launcher still prefers `mpv.exe` and starts `mpv` with `windowsHide: true` to avoid blank console windows.
+- Natural track-end detection now depends on observed `idle-active` transitions from `mpv` JSON IPC instead of wrapper-specific stop events.
 
 ## Web Dashboard
 
@@ -322,6 +331,8 @@ Important details:
 
 Current state-redesign coverage lives in:
 
+- `src/audio/mpv-ipc-client.test.ts`
+- `src/audio/mpv-launch-helpers.test.ts`
 - `src/history/history-store-state-redesign.test.ts`
 - `src/taste/taste-engine.test.ts`
 - `src/taste/discover-pipeline.test.ts`
@@ -334,6 +345,13 @@ Current state-redesign coverage lives in:
 ```
 
 That means every test run compiles first, then runs the built Node test suite from `dist/`.
+
+Direct dependency state as of 2026-03-22:
+
+- `@modelcontextprotocol/sdk`, `better-sqlite3`, `@distube/ytsr`, and `zod` are already current.
+- `ws` is now on `8.20.0`.
+- `youtube-dl-exec` is now on `3.1.4`.
+- `node-mpv` has been removed.
 
 ## Not Current Anymore
 

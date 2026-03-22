@@ -1,5 +1,55 @@
 # Project Changelog
 
+## 2026-03-22 (Dependency Refresh + Internal MPV IPC Adapter)
+
+### Dependency Refresh
+- Removed `node-mpv` from direct dependencies in:
+  - `package.json`
+  - `package-lock.json`
+- Updated direct runtime dependencies:
+  - `ws` -> `8.20.0`
+  - `youtube-dl-exec` -> `3.1.4`
+- Kept `better-sqlite3`, `@modelcontextprotocol/sdk`, `@distube/ytsr`, and `zod` unchanged because they were already current for this repo on 2026-03-22.
+
+### Audio Runtime
+- Replaced the wrapper-based mpv integration with a small internal JSON IPC stack in:
+  - `src/audio/mpv-controller.ts`
+  - `src/audio/mpv-process-session.ts`
+  - `src/audio/mpv-ipc-client.ts`
+  - `src/audio/mpv-launch-helpers.ts`
+- Deleted the obsolete wrapper glue and type shim:
+  - `src/audio/node-mpv-bootstrap.ts`
+  - `src/audio/node-mpv-bootstrap.test.ts`
+  - `src/types/node-mpv.d.ts`
+- The controller contract stayed stable for queue, MCP, and dashboard code:
+  - `play`
+  - `pause`
+  - `resume`
+  - `stop`
+  - `setVolume`
+  - `toggleMute`
+  - `getPosition`
+  - `getDuration`
+  - `state-change` / `paused` / `resumed` / `stopped`
+- Natural track-end handling now comes from observed `idle-active` IPC transitions instead of wrapper-specific events.
+- Windows launch behavior still prefers `mpv.exe` and hides the managed mpv console window.
+
+### Publish Verification
+- Tightened tarball install verification in:
+  - `scripts/verify-publish.mjs`
+- Publish verification now fails on unexpected install deprecation warnings.
+- The only explicitly accepted residual warning is:
+  - `better-sqlite3` -> `prebuild-install`
+
+### Tests + Validation
+- Added audio coverage in:
+  - `src/audio/mpv-ipc-client.test.ts`
+  - `src/audio/mpv-launch-helpers.test.ts`
+- Validation:
+  - `npm outdated --json`: empty
+  - `npm test`: 118 passed, 0 failed
+  - `npm run verify:publish`: passed
+
 ## 2026-03-21 (CLI Help and Version Flags)
 
 ### CLI

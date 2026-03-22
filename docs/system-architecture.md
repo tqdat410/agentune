@@ -164,14 +164,26 @@ Files:
 - `src/queue/queue-manager.ts`
 - `src/queue/queue-playback-controller.ts`
 - `src/audio/mpv-controller.ts`
+- `src/audio/mpv-process-session.ts`
+- `src/audio/mpv-ipc-client.ts`
+- `src/audio/mpv-launch-helpers.ts`
 
 Behavior:
 
 - `QueueManager` owns now playing, queued items, and playback history.
 - `QueuePlaybackController` resolves audio, records plays, updates completion/skip status, and advances the queue.
+- `MpvController` keeps the public playback contract stable for queue, MCP, and dashboard code.
+- `MpvProcessSession` launches `mpv` directly and binds the JSON IPC socket/pipe.
+- `MpvIpcClient` sends newline-delimited JSON commands and matches replies by `request_id`.
 - Track feedback is stored as raw history updates only.
 - Playback feedback now stays in raw history rows; there is no secondary taste update loop.
 - Apple genre enrichment still runs after playback starts and updates track tags asynchronously.
+
+Important notes:
+
+- The old `node-mpv` wrapper is gone.
+- The controller observes `pause` and `idle-active` through JSON IPC so pause/resume state and natural track-end queue advancement stay deterministic.
+- Windows launch behavior still hides the managed `mpv` console window and prefers `mpv.exe` when present.
 
 ### Web Dashboard
 
@@ -280,11 +292,14 @@ Important notes:
 
 - `npm run build` cleans `dist/` before compiling so deleted test files do not leak into later runs.
 - `npm test` currently validates:
+  - mpv IPC transport behavior
+  - Windows mpv launch helpers
   - history store behavior
   - queue behavior
   - resolver/provider behavior
   - discover pipeline and soft ranking
   - taste engine redesign
+- `npm run verify:publish` now also verifies tarball install output so unexpected deprecation warnings fail the release gate. The only accepted install warning is `better-sqlite3`'s transitive `prebuild-install` notice.
 
 ## Design Rules
 
