@@ -21,6 +21,7 @@ Empower developers using AI coding assistants (Claude Code, Cursor, Codex) to en
 - Playback control (play, pause, skip, queue)
 - Browser dashboard showing now-playing + volume
 - Headless audio via mpv (independent of browser)
+- Local CLI diagnostics for required dependencies and daemon health
 - Curated mood keywords (`focus`, `energetic`, `chill`, `debug`, `ship`)
 - Cross-platform (Windows, macOS, Linux)
 
@@ -46,6 +47,7 @@ Empower developers using AI coding assistants (Claude Code, Cursor, Codex) to en
 | F8 | Mood keywords auto-generate search queries | 2, 6 | P1 |
 | F9 | Queue persists during session | 7 | P1 |
 | F10 | Works on Windows, macOS, Linux | 3 | P0 |
+| F11 | CLI checks required runtime dependencies and daemon status | post-MVP hardening | P1 |
 
 ## Non-Functional Requirements
 
@@ -79,6 +81,7 @@ Empower developers using AI coding assistants (Claude Code, Cursor, Codex) to en
 - mpv (audio engine)
 - yt-dlp (Python-based audio extraction)
 - npm account authentication for alpha/stable publish steps
+- A local diagnostics path (`agentune doctor`) to verify the above dependencies before runtime use
 
 ### Architecture Dependencies
 1. Phase 1 (Setup) → Phase 2 (MCP) → Phase 3 (mpv) → Phase 4 (YouTube)

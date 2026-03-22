@@ -17,14 +17,18 @@ export function writePidFile(port: number, controlToken: string): void {
     port,
     started: new Date().toISOString(),
   };
-  writeFileSync(getPidFilePath(), JSON.stringify(info), 'utf8');
+  writeFileSync(getPidFilePath(), JSON.stringify(info), { encoding: 'utf8', mode: 0o600 });
 }
 
-/** Read + parse PID file; returns null if missing or corrupt */
+/** Read + parse PID file; returns null if missing, corrupt, or malformed */
 export function readPidFile(): DaemonInfo | null {
   try {
     const raw = readFileSync(getPidFilePath(), 'utf8');
-    return JSON.parse(raw) as DaemonInfo;
+    const info = JSON.parse(raw) as Record<string, unknown>;
+    if (typeof info.pid !== 'number' || typeof info.port !== 'number' || typeof info.controlToken !== 'string') {
+      return null;
+    }
+    return info as unknown as DaemonInfo;
   } catch {
     return null;
   }

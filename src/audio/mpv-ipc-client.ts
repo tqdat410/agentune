@@ -159,7 +159,13 @@ export class MpvIpcClient extends EventEmitter {
   }
 
   private handleIncomingMessage(line: string): void {
-    const message = JSON.parse(line) as MpvMessage;
+    let message: MpvMessage;
+    try {
+      message = JSON.parse(line) as MpvMessage;
+    } catch {
+      console.error('[mpv] Ignoring malformed IPC message:', line.slice(0, 200));
+      return;
+    }
     if (typeof message.request_id === 'number') {
       this.resolvePendingRequest(message);
       return;

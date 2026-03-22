@@ -152,12 +152,30 @@ function isInitializeRequest(body: unknown): boolean {
   return (body as Record<string, unknown>)?.method === 'initialize';
 }
 
+const MAX_SESSIONS = 100;
+const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
 /** Create an HTTP MCP handler for daemon mode — manages per-session transports */
 export function createHttpMcpHandler(): {
   handleRequest: (req: IncomingMessage, res: ServerResponse, body?: unknown) => Promise<void>;
   close: () => Promise<void>;
 } {
   const sessions = new Map<string, StreamableHTTPServerTransport>();
+  const lastActivity = new Map<string, number>();
+
+  // Periodic sweep: remove sessions idle beyond TTL
+  const sweepInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [sid, timestamp] of lastActivity) {
+      if (now - timestamp > SESSION_TTL_MS) {
+        const transport = sessions.get(sid);
+        if (transport) transport.close().catch(() => {});
+        sessions.delete(sid);
+        lastActivity.delete(sid);
+      }
+    }
+  }, 60_000);
+  sweepInterval.unref(); // Don't keep process alive for cleanup
 
   return {
     async handleRequest(req, res, body) {
@@ -165,15 +183,34 @@ export function createHttpMcpHandler(): {
 
       if (req.method === 'POST' && !sessionId && isInitializeRequest(body)) {
         // New session — create transport + server
+        // Evict oldest session if at capacity
+        if (sessions.size >= MAX_SESSIONS) {
+          let oldestSid: string | undefined;
+          let oldestTime = Infinity;
+          for (const [sid, ts] of lastActivity) {
+            if (ts < oldestTime) { oldestTime = ts; oldestSid = sid; }
+          }
+          if (oldestSid) {
+            const old = sessions.get(oldestSid);
+            if (old) old.close().catch(() => {});
+            sessions.delete(oldestSid);
+            lastActivity.delete(oldestSid);
+          }
+        }
+
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (sid) => {
             sessions.set(sid, transport);
+            lastActivity.set(sid, Date.now());
           },
         });
         transport.onclose = () => {
           const sid = transport.sessionId;
-          if (sid) sessions.delete(sid);
+          if (sid) {
+            sessions.delete(sid);
+            lastActivity.delete(sid);
+          }
         };
         try {
           const server = new McpServer({ name: 'agentune', version: '0.1.0' });
@@ -188,6 +225,7 @@ export function createHttpMcpHandler(): {
           }
         }
       } else if (sessionId && sessions.has(sessionId)) {
+        lastActivity.set(sessionId, Date.now());
         await sessions.get(sessionId)!.handleRequest(req, res, body);
       } else if (req.method === 'POST' && sessionId && !sessions.has(sessionId)) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -201,9 +239,11 @@ export function createHttpMcpHandler(): {
       }
     },
     async close() {
+      clearInterval(sweepInterval);
       for (const [sid, transport] of sessions) {
         await transport.close();
         sessions.delete(sid);
+        lastActivity.delete(sid);
       }
     },
   };

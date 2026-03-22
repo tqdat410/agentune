@@ -35,6 +35,7 @@ Agent / MCP Client
 
 - `agentune --daemon` starts the long-lived process.
 - `agentune start` starts the same daemon in the background and exits after readiness succeeds.
+- `agentune doctor` performs local diagnostics without starting playback.
 - Runtime config lives at `${AGENTUNE_DATA_DIR || ~/.agentune}/config.json`.
 - The daemon exposes:
   - `/mcp` on the configured daemon port for MCP traffic
@@ -47,6 +48,24 @@ Agent / MCP Client
 - One daemon means one shared queue, one shared history DB, and one shared `mpv` process.
 - The daemon stays alive until an explicit stop request arrives from `agentune stop` or the dashboard stop button.
 - `agentune stop` waits for graceful shutdown first and only falls back to a verified process kill.
+
+### Operational Diagnostics
+
+- `agentune doctor` is a local CLI health check for installation and runtime support.
+- Required checks:
+  - Node.js satisfies `package.json.engines.node`
+  - runtime config loads successfully
+  - `mpv` resolves from PATH
+  - the bundled `youtube-dl-exec` `yt-dlp` binary exists and is executable
+- Advisory checks:
+  - system `yt-dlp` on PATH
+  - daemon health / stopped state
+- The command also reports resolved runtime paths:
+  - data dir
+  - config path
+  - history DB path
+  - PID file path
+  - daemon log path
 
 ## Core Components
 

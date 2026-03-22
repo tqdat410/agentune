@@ -21,6 +21,8 @@ agentune is a local MCP music player for Claude Code, Codex, OpenCode, and other
 - `mpv`
 - `yt-dlp`
 
+Use `agentune doctor` after install to verify the runtime sees the required dependencies, the bundled `yt-dlp` binary, the system `yt-dlp` command, and the current daemon state.
+
 ### macOS
 
 ```bash
@@ -47,6 +49,7 @@ scoop install mpv yt-dlp
 ```bash
 npm install -g agentune
 agentune --version
+agentune doctor
 ```
 
 ### 2. Connect your MCP client
@@ -90,9 +93,12 @@ Useful daemon commands:
 
 ```bash
 agentune --help
+agentune doctor
 agentune start
 agentune stop
 ```
+
+Use `agentune doctor` to confirm Node.js, `mpv`, bundled `yt-dlp`, system `yt-dlp`, config paths, and daemon health before you start playback.
 
 Use `agentune start` when you want the background daemon running before your agent connects, or when `autoStartDaemon` is disabled.
 
@@ -131,6 +137,7 @@ The agent can update the saved taste text, then continue using the new preferenc
 - Check what is playing right now
 - Review recent listening history
 - Update the taste/persona text any time in plain language
+- Run `agentune doctor` to inspect runtime dependencies and local daemon health
 
 ## Browser Dashboard
 
@@ -162,6 +169,8 @@ agentune start
 ```
 
 The daemon keeps playing in the background after the agent session closes. It stops only when you run `agentune stop` or click `Stop daemon` in the dashboard.
+
+`agentune doctor` treats Node.js, runtime config, `mpv`, and the bundled `yt-dlp` binary as required checks. System `yt-dlp` and daemon stopped state are reported as advisory warnings instead of hard failures.
 
 ## More Docs
 

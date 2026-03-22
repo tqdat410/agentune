@@ -14,17 +14,20 @@
 - agent-facing discover guidance cleanup: complete
 - explicit daemon lifecycle + dashboard stop: complete
 - optional daemon auto-start + manual `agentune start`: complete
+- local dependency + daemon diagnostics via `agentune doctor`: complete
 - web/dashboard hardening + safer daemon stop: complete
 - discover rewrite automated validation: complete
 - local-gated npm release workflow: complete
+- GitHub Actions CI matrix for Ubuntu, Windows, and macOS: complete
 - daemon/MCP end-to-end smoke record: pending
 
 Last validated:
 
-- `2026-03-21`
+- `2026-03-22`
 - `npm run build`: passed
-- `npm test`: 114 passed, 0 failed
+- `npm test`: 126 passed, 0 failed
 - `npm run verify:publish`: passed
+- `node dist/index.js doctor`: passed
 - built-handler smoke: `discover({ artist: "Nils Frahm", limit: 1 })` returned a paginated Apple candidate
 
 ## Completed Milestones
@@ -41,6 +44,7 @@ Last validated:
 - MCP tools for playback, queue inspection, volume, and history
 - Apple-first `play_song` / `add_song` resolution flow
 - shared daemon so multiple agent sessions see the same queue and history
+- CLI diagnostics for required runtime dependencies and daemon health
 
 ### Dashboard
 
@@ -94,7 +98,7 @@ Status: in progress
 Next work:
 
 - publish and validate an `alpha` prerelease from the new gated flow
-- validate Windows/macOS/Linux prerequisites end-to-end
+- validate Windows/macOS/Linux prerequisites end-to-end, including `agentune doctor`
 - decide when to promote the first stable `latest` release
 
 ## Near-Term Backlog

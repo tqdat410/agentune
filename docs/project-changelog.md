@@ -1,5 +1,107 @@
 # Project Changelog
 
+## 2026-03-22 (CI Stability: Authenticated yt-dlp Download + Bounded Doctor Probes)
+
+### CI
+- Added job-level `GITHUB_TOKEN` in `.github/workflows/ci.yml` so `youtube-dl-exec` postinstall can authenticate against GitHub Releases during `npm ci` and tarball install verification.
+- This removes the unauthenticated API-rate-limit failure seen on `macos-latest`.
+
+### CLI Diagnostics
+- Hardened external command probes in:
+  - `src/cli/doctor-runtime-support.ts`
+  - `src/audio/mpv-launch-helpers.ts`
+- `doctor` now bounds `where` / `which` / `--version` subprocesses with a 5s timeout and hides Windows console windows for probe commands.
+- This prevents CI jobs from hanging indefinitely when a runtime binary lookup or version probe stalls on a hosted runner.
+
+### Tests
+- Added `src/cli/doctor-runtime-support.test.ts` coverage for:
+  - first non-empty line resolution
+  - forced timeout handling for hung subprocesses
+
+### Validation
+- `npm run build`: passed
+- `npm test`: 128 passed, 0 failed
+- `npm run verify:publish`: passed
+- `node dist/index.js doctor`: passed
+
+## 2026-03-22 (Compiled Test Runner Compatibility)
+
+### CI / Test Scripts
+- Replaced the compiled test command glob with `scripts/run-compiled-tests.mjs`.
+- The new runner walks `dist/` recursively and passes explicit `*.test.js` paths into `node --test`.
+- This removes the Windows + Node.js 20 glob expansion mismatch that broke `npm run verify:publish` in GitHub Actions.
+
+### Validation
+- `npm test`: passed
+- `npm run verify:publish`: passed
+- `node dist/index.js doctor`: passed
+
+## 2026-03-22 (Cross-Platform GitHub Actions CI Matrix)
+
+### CI
+- Added `.github/workflows/ci.yml` for OSS validation on:
+  - `ubuntu-latest`
+  - `windows-latest`
+  - `macos-latest`
+- Workflow policy:
+  - Node.js `20`
+  - npm dependency cache via `actions/setup-node`
+  - `strategy.fail-fast: false`
+  - `pull_request`, `push`, and manual dispatch support
+  - read-only workflow permissions and in-progress cancellation per ref
+- Each matrix job now:
+  - runs `npm ci`
+  - installs runtime dependencies for that OS
+  - runs `npm run verify:publish`
+  - runs `node dist/index.js doctor`
+
+### Validation
+- Local workflow authoring only; first GitHub-hosted runner execution is pending.
+
+## 2026-03-22 (CLI Doctor Diagnostics)
+
+### CLI
+- Added `agentune doctor` in:
+  - `src/index.ts`
+  - `src/cli/doctor-command.ts`
+  - `src/cli/doctor-report.ts`
+  - `src/cli/doctor-runtime-support.ts`
+  - `src/package-metadata.ts`
+- `doctor` now reports:
+  - Node.js compatibility against `package.json.engines.node`
+  - runtime config status and resolved ports
+  - `mpv` availability + version
+  - bundled `youtube-dl-exec` `yt-dlp` availability + version
+  - system `yt-dlp` availability + version
+  - daemon state (`healthy`, `stopped`, `stale`, `unresponsive`)
+  - runtime data paths (`config`, `history.db`, `daemon.pid`, `daemon.log`)
+- Exit code policy:
+  - exits `1` on required failures only
+  - required: Node.js, runtime config, `mpv`, bundled `yt-dlp`
+  - advisory: system `yt-dlp`, daemon stopped / unhealthy
+
+### Supporting Runtime Change
+- Extended `src/audio/mpv-launch-helpers.ts` with `resolveInstalledMpvBinary()` so CLI diagnostics and runtime code share `mpv` lookup behavior.
+
+### Tests
+- Added CLI diagnostics coverage in:
+  - `src/cli/doctor-command.test.ts`
+  - `src/cli/doctor-report.test.ts`
+- Updated `src/cli/meta-command.test.ts` to lock `agentune doctor` in help output.
+
+### Documentation
+- Updated:
+  - `README.md`
+  - `docs/codebase-summary.md`
+  - `docs/system-architecture.md`
+  - `docs/project-roadmap.md`
+  - `docs/project-overview-pdr.md`
+
+### Validation
+- `npm run build`: passed
+- `npm test`: 126 passed, 0 failed
+- `node dist/index.js doctor`: passed
+
 ## 2026-03-22 (Dependency Refresh + Internal MPV IPC Adapter)
 
 ### Dependency Refresh

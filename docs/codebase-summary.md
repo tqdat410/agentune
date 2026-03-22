@@ -12,6 +12,7 @@
 - The daemon is explicit-lifecycle: no idle auto-shutdown, stop only via CLI or dashboard.
 - `agentune stop` now waits for graceful shutdown first and only falls back to a verified process kill.
 - The daemon PID file now also carries a per-process control token used by `/mcp` and `/shutdown`.
+- `agentune doctor` now reports Node.js compatibility, runtime config state, `mpv`, bundled `yt-dlp`, system `yt-dlp`, daemon health, and local runtime paths.
 - The dashboard now bootstraps a per-process session token into HTML and requires that token for local API, artwork-proxy, and WebSocket access.
 - Audio control now talks to `mpv` through a small internal JSON IPC client instead of the stale `node-mpv` wrapper package.
 - Tarball publish verification now rejects unexpected install deprecation warnings and explicitly allows only the residual `better-sqlite3 -> prebuild-install` warning.
@@ -46,6 +47,11 @@ agentune/
 │   │   ├── mpv-process-session.ts
 │   │   └── platform-ipc-path.ts
 │   ├── cli/
+│   │   ├── doctor-command.test.ts
+│   │   ├── doctor-command.ts
+│   │   ├── doctor-report.test.ts
+│   │   ├── doctor-report.ts
+│   │   ├── doctor-runtime-support.ts
 │   │   ├── start-command.ts
 │   │   ├── status-command.ts
 │   │   └── stop-command.ts
@@ -230,6 +236,35 @@ Important details:
 - `update_persona()` persists taste text and broadcasts persona updates, but does not clear the discover pagination cache.
 - Discover ranking is internal only; the public MCP response does not expose scores.
 
+## CLI Surface
+
+Files:
+
+- `src/index.ts`
+- `src/cli/start-command.ts`
+- `src/cli/status-command.ts`
+- `src/cli/stop-command.ts`
+- `src/cli/doctor-command.ts`
+- `src/cli/doctor-report.ts`
+
+Current CLI commands:
+
+- `agentune`
+  - starts stdio proxy mode
+- `agentune start`
+  - ensures the background daemon is running
+- `agentune status`
+  - reports daemon health from `/health`
+- `agentune stop`
+  - requests graceful daemon shutdown and only falls back to a verified process kill
+- `agentune doctor`
+  - checks Node.js against `package.json.engines.node`
+  - loads runtime config and reports resolved data paths
+  - verifies `mpv`
+  - verifies the bundled `youtube-dl-exec` `yt-dlp` binary
+  - reports system `yt-dlp` separately as advisory
+  - reports daemon state as healthy / stopped / stale / unresponsive
+
 ## Queue and Playback
 
 Files:
@@ -345,6 +380,11 @@ Current state-redesign coverage lives in:
 ```
 
 That means every test run compiles first, then runs the built Node test suite from `dist/`.
+
+Current CLI diagnostics coverage lives in:
+
+- `src/cli/doctor-command.test.ts`
+- `src/cli/doctor-report.test.ts`
 
 Direct dependency state as of 2026-03-22:
 

@@ -34,6 +34,7 @@ const PUBLIC_DIR = fileURLToPath(new URL('../../public', import.meta.url));
 const MAX_WEBSOCKET_PAYLOAD_BYTES = 64 * 1024;
 const DASHBOARD_HTML_HEADERS = {
   'Cache-Control': 'no-store',
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' ws://127.0.0.1:*",
   'Content-Type': 'text/html; charset=utf-8',
   'Referrer-Policy': 'no-referrer',
   'X-Frame-Options': 'DENY',

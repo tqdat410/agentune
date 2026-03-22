@@ -149,7 +149,11 @@ function hasAnyHistoryTables(db: Database.Database): boolean {
   return !!row;
 }
 
+const VALID_TABLE_NAMES = new Set(['tracks', 'plays', 'session_state', 'provider_cache', 'preferences']);
+
 function getColumnNames(db: Database.Database, tableName: string): Set<string> {
+  if (!VALID_TABLE_NAMES.has(tableName)) throw new Error(`Invalid table name: ${tableName}`);
+
   const tableExists = db.prepare(`
     SELECT 1
     FROM sqlite_master
@@ -161,7 +165,8 @@ function getColumnNames(db: Database.Database, tableName: string): Set<string> {
     return new Set();
   }
 
-  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+  // SAFETY: tableName is validated against VALID_TABLE_NAMES allowlist above
+  const columns = db.prepare(`PRAGMA table_info("${tableName}")`).all() as Array<{ name: string }>;
   return new Set(columns.map((column) => column.name));
 }
 

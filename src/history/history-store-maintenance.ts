@@ -90,7 +90,11 @@ export function runHistoryDatabaseMaintenance(db: Database.Database): void {
   db.pragma('optimize');
 }
 
+const VALID_TABLE_NAMES = new Set(['tracks', 'plays', 'provider_cache', 'session_state']);
+
 function countRows(db: Database.Database, tableName: string): number {
-  const row = db.prepare(`SELECT COUNT(*) as count FROM ${tableName}`).get() as { count: number };
+  if (!VALID_TABLE_NAMES.has(tableName)) throw new Error(`Invalid table name: ${tableName}`);
+  // SAFETY: tableName is validated against VALID_TABLE_NAMES allowlist above
+  const row = db.prepare(`SELECT COUNT(*) as count FROM "${tableName}"`).get() as { count: number };
   return row.count;
 }

@@ -172,6 +172,7 @@ function createStopCommandDependencies(): StopCommandDependencies {
 }
 
 function getProcessCommand(pid: number): string | null {
+  if (!Number.isInteger(pid) || pid < 0) return null;
   try {
     if (process.platform === 'win32') {
       const result = spawnSync(

@@ -1,4 +1,4 @@
-import { exec } from 'child_process';
+import { spawn } from 'child_process';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { extname } from 'path';
 
@@ -24,16 +24,11 @@ export function sendJson(response: ServerResponse, payload: unknown, statusCode 
 
 export function openUrl(url: string): void {
   if (process.platform === 'win32') {
-    exec(`start "" "${url}"`);
+    spawn('cmd', ['/c', 'start', '', url], { stdio: 'ignore', detached: true }).unref();
     return;
   }
-
-  if (process.platform === 'darwin') {
-    exec(`open "${url}"`);
-    return;
-  }
-
-  exec(`xdg-open "${url}"`);
+  const command = process.platform === 'darwin' ? 'open' : 'xdg-open';
+  spawn(command, [url], { stdio: 'ignore', detached: true }).unref();
 }
 
 export async function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown> | null> {
