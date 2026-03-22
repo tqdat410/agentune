@@ -3,7 +3,6 @@
 // agentune — MCP music server entry point
 // Bootstraps MCP server, audio engine, and web dashboard
 
-import { readFileSync } from 'node:fs';
 import { createMpvController, getMpvController, waitForMpvStartupWarmup } from './audio/mpv-controller.js';
 import { createYoutubeProvider } from './providers/youtube-provider.js';
 import { createWebServer, getWebServer } from './web/web-server.js';
@@ -16,6 +15,7 @@ import { createDaemonControlToken } from './daemon/daemon-auth.js';
 import { DaemonServer } from './daemon/daemon-server.js';
 import { writePidFile, removePidFile } from './daemon/pid-manager.js';
 import { loadRuntimeConfig } from './runtime/runtime-config.js';
+import { readPackageMetadata } from './package-metadata.js';
 import type { WebServerOptions } from './web/web-server.js';
 
 // --- Shared bootstrap ---
@@ -138,11 +138,13 @@ if (firstArg === '--help' || firstArg === '-h' || firstArg === 'help') {
 } else if (args.includes('--daemon')) {
   startDaemon().catch((err) => { console.error('[agentune] Fatal:', err); process.exit(1); });
 } else if (firstArg === 'status') {
-  import('./cli/status-command.js').then(({ runStatus }) => runStatus());
+  import('./cli/status-command.js').then(({ runStatus }) => runStatus()).then(() => process.exit());
 } else if (firstArg === 'start') {
-  import('./cli/start-command.js').then(({ runStart }) => runStart());
+  import('./cli/start-command.js').then(({ runStart }) => runStart()).then(() => process.exit());
 } else if (firstArg === 'stop') {
-  import('./cli/stop-command.js').then(({ runStop }) => runStop());
+  import('./cli/stop-command.js').then(({ runStop }) => runStop()).then(() => process.exit());
+} else if (firstArg === 'doctor') {
+  import('./cli/doctor-command.js').then(({ runDoctor }) => runDoctor()).then((code) => process.exit(code));
 } else {
   // Default: proxy mode — relay stdio↔HTTP and optionally auto-start daemon.
   startProxyMode().catch((err) => { console.error('[agentune] Fatal:', err); process.exit(1); });
@@ -158,6 +160,7 @@ function printCliHelp(): void {
       'Usage:',
       '  agentune                 Start MCP stdio proxy mode',
       '  agentune start           Start the daemon in the background',
+      '  agentune doctor          Check runtime dependencies and daemon health',
       '  agentune stop            Stop the running daemon',
       '  agentune status          Show daemon status',
       '  agentune version         Print CLI version',
@@ -174,13 +177,6 @@ function printCliHelp(): void {
 
 function printCliVersion(): void {
   process.stdout.write(`${readPackageMetadata().version}\n`);
-}
-
-function readPackageMetadata(): { description: string; version: string } {
-  return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
-    description: string;
-    version: string;
-  };
 }
 
 async function startProxyMode() {
