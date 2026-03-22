@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { firstResolvedExecutableFromWhere, shouldHideWindowsConsoleForCommand } from './node-mpv-bootstrap.js';
+import { firstResolvedExecutableFromWhere, shouldHideWindowsConsoleForCommand } from './mpv-launch-helpers.js';
 
 test('firstResolvedExecutableFromWhere returns the first non-empty line', () => {
   const output = '\r\nC:\\Users\\Admin\\scoop\\apps\\mpv\\current\\mpv.exe\r\nC:\\Other\\mpv.exe\r\n';

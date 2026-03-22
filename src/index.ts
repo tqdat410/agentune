@@ -55,8 +55,8 @@ async function bootstrapComponents(webServerOptions?: Pick<WebServerOptions, 'on
 
   try {
     mpv.init();
-    // node-mpv needs a short idle warmup before first playback, otherwise EOF
-    // can miss the stop signal and queued tracks will not auto-advance.
+    // mpv needs a short IPC warmup before first playback so stop detection
+    // can observe the initial idle-to-active transition reliably.
     await waitForMpvStartupWarmup();
   } catch (err) {
     console.error('[agentune] Audio engine unavailable:', (err as Error).message);
