@@ -1,18 +1,10 @@
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { spawnSync, spawn, type ChildProcess } from 'node:child_process';
 import { unlinkSync } from 'node:fs';
 
-export function isMpvInstalled(): boolean {
-  try {
-    if (process.platform === 'win32') {
-      execFileSync('where.exe', ['mpv.exe'], { stdio: ['ignore', 'ignore', 'ignore'] });
-      return true;
-    }
+const COMMAND_TIMEOUT_MS = 5_000;
 
-    execFileSync('which', ['mpv'], { stdio: ['ignore', 'ignore', 'ignore'] });
-    return true;
-  } catch {
-    return false;
-  }
+export function isMpvInstalled(): boolean {
+  return resolveInstalledMpvBinary() !== undefined;
 }
 
 export function cleanupStaleIpcPath(ipcPath: string): void {
@@ -46,15 +38,15 @@ export function resolvePreferredMpvBinary(): string | undefined {
     return undefined;
   }
 
-  try {
-    const output = execFileSync('where.exe', ['mpv.exe'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    return firstResolvedExecutableFromWhere(output);
-  } catch {
-    return undefined;
+  return resolveBinaryPath('where.exe', ['mpv.exe']);
+}
+
+export function resolveInstalledMpvBinary(): string | undefined {
+  if (process.platform === 'win32') {
+    return resolvePreferredMpvBinary();
   }
+
+  return resolveBinaryPath('which', ['mpv']);
 }
 
 export function firstResolvedExecutableFromWhere(output: string): string | undefined {
@@ -69,4 +61,23 @@ export function shouldHideWindowsConsoleForCommand(command: string): boolean {
   return normalized.endsWith('mpv')
     || normalized.endsWith('mpv.exe')
     || normalized.endsWith('mpv.com');
+}
+
+function resolveBinaryPath(command: string, args: string[]): string | undefined {
+  try {
+    const result = spawnSync(command, args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: COMMAND_TIMEOUT_MS,
+      windowsHide: true,
+    });
+
+    if (result.error || result.status !== 0) {
+      return undefined;
+    }
+
+    return firstResolvedExecutableFromWhere(result.stdout ?? '');
+  } catch {
+    return undefined;
+  }
 }

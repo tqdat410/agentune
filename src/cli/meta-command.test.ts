@@ -33,5 +33,6 @@ test('agentune --help prints CLI usage and exits cleanly', () => {
   assert.match(result.stdout, /^agentune/m);
   assert.match(result.stdout, new RegExp(packageMetadata.description.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.match(result.stdout, /agentune --version/);
+  assert.match(result.stdout, /agentune doctor/);
   assert.match(result.stdout, /agentune start/);
 });
