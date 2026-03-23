@@ -79,6 +79,14 @@ export class MpvController extends EventEmitter {
     this.enqueueSessionCommand('load file', () => this.ensureSession().loadFile(url));
   }
 
+  appendToPlaylist(filePath: string): void {
+    this.enqueueSessionCommand('append to playlist', () => this.ensureSession().appendToPlaylist(filePath));
+  }
+
+  clearPlaylist(): void {
+    this.enqueueSessionCommand('clear playlist', () => this.ensureSession().clearPlaylist());
+  }
+
   pause(): void {
     this.state.isPlaying = false;
     this.emitStateChange();
@@ -145,6 +153,15 @@ export class MpvController extends EventEmitter {
     }
   }
 
+  async getPlaylistCount(): Promise<number> {
+    const session = this.ensureSession();
+    try {
+      return await session.getPlaylistCount();
+    } catch {
+      return 0;
+    }
+  }
+
   /** Tell the controller to silently discard the next N idle-active stopped events. */
   suppressNextStopped(): void {
     this.suppressStoppedCount++;
@@ -183,6 +200,11 @@ export class MpvController extends EventEmitter {
 
       if (event.name === 'idle-active' && event.data === true) {
         this.handleStoppedEvent();
+        return;
+      }
+
+      if (event.name === 'playlist-pos' && typeof event.data === 'number') {
+        this.emit('segment-changed', event.data);
       }
     });
 

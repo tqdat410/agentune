@@ -28,6 +28,7 @@ export class QueueManager extends EventEmitter {
   add(item: QueueItem): number {
     this.state.queue.push(item);
     this.emitStateChange();
+    this.emitQueueContentChange();
     return this.state.queue.length;
   }
 
@@ -38,12 +39,27 @@ export class QueueManager extends EventEmitter {
   next(): QueueItem | null {
     const nextItem = this.state.queue.shift() ?? null;
     this.emitStateChange();
+    if (nextItem) {
+      this.emitQueueContentChange();
+    }
     return nextItem;
   }
 
   /** Look at the next item without removing it from the queue. */
   peek(): QueueItem | null {
     return this.state.queue[0] ?? null;
+  }
+
+  removeById(id: string): QueueItem | null {
+    const queueIndex = this.state.queue.findIndex((item) => item.id === id);
+    if (queueIndex === -1) {
+      return null;
+    }
+
+    const [removedItem] = this.state.queue.splice(queueIndex, 1);
+    this.emitStateChange();
+    this.emitQueueContentChange();
+    return removedItem ?? null;
   }
 
   size(): number {
@@ -53,6 +69,7 @@ export class QueueManager extends EventEmitter {
   clear(): void {
     this.state.queue = [];
     this.emitStateChange();
+    this.emitQueueContentChange();
   }
 
   reset(): void {
@@ -62,6 +79,7 @@ export class QueueManager extends EventEmitter {
       history: [],
     };
     this.emitStateChange();
+    this.emitQueueContentChange();
   }
 
   getNowPlaying(): QueueItem | null {
@@ -108,6 +126,10 @@ export class QueueManager extends EventEmitter {
 
   private emitStateChange(): void {
     this.emit('state-change', this.getState());
+  }
+
+  private emitQueueContentChange(): void {
+    this.emit('queue-content-changed', this.list());
   }
 }
 

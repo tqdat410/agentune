@@ -155,7 +155,6 @@ export class YouTubeProvider {
         dumpSingleJson: true,
         flatPlaylist: true,
         noWarnings: true,
-        callHome: false,
       }, SPAWN_OPTS) as unknown as YtDlpSearchResult;
 
       const mapped = mapYtDlpSearchEntries(result.entries, limit);
@@ -180,7 +179,6 @@ export class YouTubeProvider {
           dumpSingleJson: true,
           format: 'bestaudio[ext=m4a]/bestaudio',
           noWarnings: true,
-          callHome: false,
         }, SPAWN_OPTS);
         break;
       } catch (error) {

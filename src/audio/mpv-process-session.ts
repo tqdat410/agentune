@@ -21,6 +21,7 @@ export type MpvPropertyChangeEvent = {
 
 const OBSERVE_PAUSE_ID = 1;
 const OBSERVE_IDLE_ACTIVE_ID = 2;
+const OBSERVE_PLAYLIST_POS_ID = 3;
 
 export class MpvProcessSession extends EventEmitter {
   private readonly client = new MpvIpcClient();
@@ -58,6 +59,7 @@ export class MpvProcessSession extends EventEmitter {
     ]).then(async () => {
       await this.client.observeProperty(OBSERVE_PAUSE_ID, 'pause');
       await this.client.observeProperty(OBSERVE_IDLE_ACTIVE_ID, 'idle-active');
+      await this.client.observeProperty(OBSERVE_PLAYLIST_POS_ID, 'playlist-pos');
     });
   }
 
@@ -75,6 +77,19 @@ export class MpvProcessSession extends EventEmitter {
 
   async setMute(muted: boolean): Promise<void> {
     await this.command('set_property', 'mute', muted);
+  }
+
+  async appendToPlaylist(filePath: string): Promise<void> {
+    await this.command('loadfile', filePath, 'append');
+  }
+
+  async clearPlaylist(): Promise<void> {
+    await this.command('playlist-clear');
+  }
+
+  async getPlaylistCount(): Promise<number> {
+    const value = await this.getProperty('playlist-count');
+    return typeof value === 'number' ? value : 0;
   }
 
   async stop(): Promise<void> {

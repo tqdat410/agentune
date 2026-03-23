@@ -7,12 +7,24 @@ export interface DiscoverRankingConfig {
   loyalty: number;
 }
 
+export type CrossfadeCurve = 'exp' | 'log' | 'lin';
+
+export interface CrossfadeConfig {
+  enabled: boolean;
+  duration: number;
+  curve: CrossfadeCurve;
+  loudnessNorm: boolean;
+  cacheMaxMB: number;
+}
+
 export interface RuntimeConfig {
   dashboardPort: number;
   daemonPort: number;
   defaultVolume: number;
   autoStartDaemon: boolean;
   discoverRanking: DiscoverRankingConfig;
+  // Optional for backwards compatibility in typed tests/mocks.
+  crossfade?: CrossfadeConfig;
 }
 
 export const DEFAULT_DISCOVER_RANKING_CONFIG: DiscoverRankingConfig = {
@@ -21,12 +33,21 @@ export const DEFAULT_DISCOVER_RANKING_CONFIG: DiscoverRankingConfig = {
   loyalty: 0.65,
 };
 
+export const DEFAULT_CROSSFADE_CONFIG: CrossfadeConfig = {
+  enabled: true,
+  duration: 5,
+  curve: 'exp',
+  loudnessNorm: true,
+  cacheMaxMB: 2_000,
+};
+
 export const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
   dashboardPort: 3737,
   daemonPort: 3747,
   defaultVolume: 80,
   autoStartDaemon: true,
   discoverRanking: { ...DEFAULT_DISCOVER_RANKING_CONFIG },
+  crossfade: { ...DEFAULT_CROSSFADE_CONFIG },
 };
 
 let runtimeConfigCache: RuntimeConfig | null = null;
@@ -65,6 +86,7 @@ export function loadRuntimeConfig(): RuntimeConfig {
       'autoStartDaemon',
     ),
     discoverRanking: validateDiscoverRanking(config.discoverRanking),
+    crossfade: validateCrossfadeConfig(config.crossfade),
   };
 
   if (shouldWriteRuntimeConfig(rawConfig, runtimeConfigCache)) {
@@ -91,7 +113,7 @@ function validateVolume(value: unknown, key: 'defaultVolume'): number {
   return value as number;
 }
 
-function validateBoolean(value: unknown, key: 'autoStartDaemon'): boolean {
+function validateBoolean(value: unknown, key: string): boolean {
   if (typeof value !== 'boolean') {
     throw new Error(`Invalid runtime config: ${key} must be a boolean.`);
   }
@@ -128,6 +150,44 @@ function validateUnitInterval(value: unknown, key: string): number {
     throw new Error(`Invalid runtime config: ${key} must be a number between 0 and 1.`);
   }
   return value;
+}
+
+function validateCrossfadeConfig(value: unknown): CrossfadeConfig {
+  if (value === undefined) {
+    return { ...DEFAULT_CROSSFADE_CONFIG };
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid runtime config: crossfade must be an object.');
+  }
+
+  const crossfade = value as Partial<Record<keyof CrossfadeConfig, unknown>>;
+  const curve = crossfade.curve ?? DEFAULT_CROSSFADE_CONFIG.curve;
+  if (curve !== 'exp' && curve !== 'log' && curve !== 'lin') {
+    throw new Error('Invalid runtime config: crossfade.curve must be one of exp, log, lin.');
+  }
+
+  return {
+    enabled: validateBoolean(crossfade.enabled ?? DEFAULT_CROSSFADE_CONFIG.enabled, 'crossfade.enabled'),
+    duration: validateIntegerInRange(crossfade.duration ?? DEFAULT_CROSSFADE_CONFIG.duration, 1, 12, 'crossfade.duration'),
+    curve,
+    loudnessNorm: validateBoolean(
+      crossfade.loudnessNorm ?? DEFAULT_CROSSFADE_CONFIG.loudnessNorm,
+      'crossfade.loudnessNorm',
+    ),
+    cacheMaxMB: validateIntegerInRange(
+      crossfade.cacheMaxMB ?? DEFAULT_CROSSFADE_CONFIG.cacheMaxMB,
+      100,
+      10_000,
+      'crossfade.cacheMaxMB',
+    ),
+  };
+}
+
+function validateIntegerInRange(value: unknown, min: number, max: number, key: string): number {
+  if (!Number.isInteger(value) || (value as number) < min || (value as number) > max) {
+    throw new Error(`Invalid runtime config: ${key} must be an integer between ${min} and ${max}.`);
+  }
+  return value as number;
 }
 
 function writeRuntimeConfig(configPath: string, config: RuntimeConfig): void {

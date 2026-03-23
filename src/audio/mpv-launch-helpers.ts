@@ -21,16 +21,21 @@ export function cleanupStaleIpcPath(ipcPath: string): void {
 
 export function spawnMpvProcess(ipcPath: string, preferredBinary?: string): ChildProcess {
   const binary = preferredBinary ?? resolvePreferredMpvBinary() ?? 'mpv';
-  return spawn(binary, [
+  return spawn(binary, buildMpvSpawnArgs(ipcPath), {
+    stdio: ['ignore', 'ignore', 'ignore'],
+    windowsHide: shouldHideWindowsConsoleForCommand(binary),
+  });
+}
+
+export function buildMpvSpawnArgs(ipcPath: string): string[] {
+  return [
     `--input-ipc-server=${ipcPath}`,
     '--no-video',
     '--idle',
     '--no-config',
     '--terminal=no',
-  ], {
-    stdio: ['ignore', 'ignore', 'ignore'],
-    windowsHide: shouldHideWindowsConsoleForCommand(binary),
-  });
+    '--gapless-audio=yes',
+  ];
 }
 
 export function resolvePreferredMpvBinary(): string | undefined {

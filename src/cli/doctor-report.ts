@@ -56,6 +56,7 @@ export async function collectDoctorReport(
   checks.push(checkMpvDependency(dependencies));
   checks.push(checkBundledYtDlpDependency(dependencies));
   checks.push(checkSystemYtDlpDependency(dependencies));
+  checks.push(checkFfmpegDependency(dependencies));
   checks.push(await checkDaemonState(dependencies));
 
   const exitCode = checks.some((check) => check.required && check.status === 'FAIL') ? 1 : 0;
@@ -174,6 +175,15 @@ function checkSystemYtDlpDependency(dependencies: DoctorReportDependencies): Doc
   return createVersionedCheck(dependencies, 'Dependencies', 'yt-dlp system', binaryPath, false);
 }
 
+function checkFfmpegDependency(dependencies: DoctorReportDependencies): DoctorCheck {
+  const binaryPath = dependencies.resolveCommandFromPath('ffmpeg');
+  if (!binaryPath) {
+    return createCheck('Dependencies', 'ffmpeg', 'WARN', 'Not found in PATH (crossfade disabled)');
+  }
+
+  return createVersionedCheck(dependencies, 'Dependencies', 'ffmpeg', binaryPath, false, ['-version']);
+}
+
 async function checkDaemonState(dependencies: DoctorReportDependencies): Promise<DoctorCheck> {
   const info = dependencies.readPidFile();
   if (!info) {
@@ -198,9 +208,10 @@ function createVersionedCheck(
   name: string,
   binaryPath: string,
   required: boolean,
+  versionArgs?: string[],
 ): DoctorCheck {
   try {
-    const version = dependencies.readVersionLine(binaryPath);
+    const version = dependencies.readVersionLine(binaryPath, versionArgs);
     return createCheck(section, name, 'OK', `${version} (${binaryPath})`, required);
   } catch (error) {
     return createCheck(section, name, required ? 'FAIL' : 'WARN', `${(error as Error).message} (${binaryPath})`, required);

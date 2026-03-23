@@ -4,6 +4,7 @@
 // Bootstraps MCP server, audio engine, and web dashboard
 
 import { createMpvController, getMpvController, waitForMpvStartupWarmup } from './audio/mpv-controller.js';
+import { createTransitionController } from './audio/transition-controller.js';
 import { createYoutubeProvider } from './providers/youtube-provider.js';
 import { createWebServer, getWebServer } from './web/web-server.js';
 import { createQueueManager } from './queue/queue-manager.js';
@@ -46,10 +47,12 @@ async function bootstrapComponents(webServerOptions?: Pick<WebServerOptions, 'on
   }
 
   const mpv = createMpvController(runtimeConfig.defaultVolume);
-  createQueuePlaybackController(mpv, queueManager, youtubeProvider);
+  const transitionController = createTransitionController(mpv);
+  createQueuePlaybackController(mpv, queueManager, youtubeProvider, transitionController);
   const webServer = createWebServer(mpv, queueManager, {
     ...webServerOptions,
     port: runtimeConfig.dashboardPort,
+    transitionController,
   });
   await webServer.waitUntilReady();
 

@@ -1,6 +1,8 @@
 import { EventEmitter } from 'events';
 import type { TrackMeta, MpvController } from '../audio/mpv-controller.js';
+import type { TransitionController } from '../audio/transition-controller.js';
 import type { QueueManager } from '../queue/queue-manager.js';
+import type { QueueItem } from '../queue/queue-manager.js';
 
 
 export interface DashboardQueueItem {
@@ -20,7 +22,9 @@ export interface DashboardState {
   queue: DashboardQueueItem[];
 }
 
-function mapTrack(track: TrackMeta | null) {
+type TrackLike = Pick<TrackMeta, 'artist' | 'duration' | 'thumbnail' | 'title'> | QueueItem | null;
+
+function mapTrack(track: TrackLike) {
   if (!track) {
     return { title: null, artist: null, thumbnail: null, duration: 0 };
   }
@@ -42,6 +46,7 @@ export class StateBroadcaster extends EventEmitter {
   constructor(
     private readonly mpv: MpvController,
     private readonly queueManager: QueueManager,
+    private readonly transitionController: TransitionController | null = null,
   ) {
     super();
     this.state = this.createBaseState();
@@ -104,10 +109,16 @@ export class StateBroadcaster extends EventEmitter {
       isMuted: currentState.isMuted,
       volume: currentState.volume,
     };
-    const track = mapTrack(snapshot.currentTrack);
-    const position = snapshot.currentTrack && this.mpv.isReady()
+    const logicalTrack = this.transitionController?.getCurrentLogicalTrack()
+      ?? this.queueManager.getNowPlaying()
+      ?? snapshot.currentTrack;
+    const track = mapTrack(logicalTrack);
+    const rawPosition = snapshot.currentTrack && this.mpv.isReady()
       ? Math.max(0, Math.round(await this.mpv.getPosition()))
       : 0;
+    const logicalPosition = this.transitionController?.getLogicalPosition(rawPosition);
+    const position = Math.round(logicalPosition?.position ?? rawPosition);
+    const duration = Math.max(position, Math.round(logicalPosition?.duration ?? track.duration));
 
     return {
       playing: snapshot.isPlaying,
@@ -115,7 +126,7 @@ export class StateBroadcaster extends EventEmitter {
       artist: track.artist,
       thumbnail: track.thumbnail,
       position,
-      duration: Math.max(position, Math.round(track.duration)),
+      duration,
       volume: snapshot.volume,
       muted: snapshot.isMuted,
       queue: this.queueManager.list().map((item) => ({ title: item.title, artist: item.artist })),

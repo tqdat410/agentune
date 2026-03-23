@@ -4,6 +4,7 @@ import { readFile, stat } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { MpvController } from '../audio/mpv-controller.js';
+import type { TransitionController } from '../audio/transition-controller.js';
 import { getHistoryStore, type HistoryStore } from '../history/history-store.js';
 import { getQueuePlaybackController } from '../queue/queue-playback-controller.js';
 import type { QueueManager } from '../queue/queue-manager.js';
@@ -44,6 +45,7 @@ export interface WebServerOptions {
   historyStore?: HistoryStore;
   onStopDaemon?: (reason: string) => void | Promise<void>;
   port?: number;
+  transitionController?: TransitionController | null;
 }
 
 export class WebServer {
@@ -77,7 +79,7 @@ export class WebServer {
     this.historyStore = options?.historyStore ?? getHistoryStore();
     this.onStopDaemon = options?.onStopDaemon;
     this.port = options?.port ?? loadRuntimeConfig().dashboardPort;
-    this.broadcaster = new StateBroadcaster(mpv, queueManager);
+    this.broadcaster = new StateBroadcaster(mpv, queueManager, options?.transitionController ?? null);
     this.readyPromise = this.start();
 
     this.wsServer.on('connection', (socket, request) => {
