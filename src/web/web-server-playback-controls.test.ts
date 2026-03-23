@@ -112,6 +112,34 @@ class PlaybackControlsFakeMpv extends EventEmitter {
   }
 }
 
+class DisabledTransitionController extends EventEmitter {
+  isActive(): boolean {
+    return false;
+  }
+
+  isEnabled(): boolean {
+    return false;
+  }
+
+  cancel(): void {}
+
+  handleSkip(): 'direct' {
+    return 'direct';
+  }
+
+  async prefetch(): Promise<void> {}
+
+  async prepareTransitionAsync(): Promise<boolean> { return false; }
+
+  getCurrentLogicalTrack(): null {
+    return null;
+  }
+
+  getLogicalPosition(): null {
+    return null;
+  }
+}
+
 async function getAvailablePort(): Promise<number> {
   return await new Promise((resolve, reject) => {
     const server = createServer();
@@ -170,6 +198,7 @@ test('WebServer websocket playback controls pause, toggle resume, and skip the c
   queueManager.setNowPlaying(currentTrack);
   queueManager.add(nextTrack);
   mpv.seedCurrentTrack(currentTrack);
+  const transitionController = new DisabledTransitionController();
 
   createQueuePlaybackController(mpv as never, queueManager, {
     search: async () => [],
@@ -180,7 +209,7 @@ test('WebServer websocket playback controls pause, toggle resume, and skip the c
       duration: id === nextTrack.id ? nextTrack.duration : currentTrack.duration,
       thumbnail: id === nextTrack.id ? nextTrack.thumbnail : currentTrack.thumbnail,
     }),
-  } as never);
+  } as never, transitionController as never);
 
   const webServer = createWebServer(mpv as never, queueManager, { port: await getAvailablePort() });
   webServer.openDashboardOnce = () => {};

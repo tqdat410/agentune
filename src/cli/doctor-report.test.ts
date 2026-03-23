@@ -24,6 +24,13 @@ function createDependencies(
         loyalty: 0.65,
         variety: 0.55,
       },
+      crossfade: {
+        cacheMaxMB: 2000,
+        curve: 'exp',
+        duration: 5,
+        enabled: true,
+        loudnessNorm: true,
+      },
     }),
     nodeVersion: 'v25.7.0',
     readPackageMetadata: () => ({
@@ -49,7 +56,31 @@ test('collectDoctorReport keeps advisory warnings non-fatal when required checks
     report.checks
       .filter((check) => check.status === 'WARN')
       .map((check) => check.name),
-    ['yt-dlp system', 'status'],
+    ['yt-dlp system', 'ffmpeg', 'status'],
+  );
+});
+
+test('collectDoctorReport reports ffmpeg as OK when present in PATH', async () => {
+  const versionCalls: Array<{ args: string[] | undefined; command: string }> = [];
+  const report = await collectDoctorReport(createDependencies({
+    readVersionLine: (command, args) => {
+      versionCalls.push({ args, command });
+      return 'ffmpeg version 8.0.1';
+    },
+    resolveCommandFromPath: (command) => {
+      if (command === 'ffmpeg') {
+        return 'C:/Tools/ffmpeg.exe';
+      }
+      return undefined;
+    },
+  }));
+
+  const ffmpegCheck = report.checks.find((check) => check.name === 'ffmpeg');
+  assert.equal(ffmpegCheck?.status, 'OK');
+  assert.match(ffmpegCheck?.detail ?? '', /C:\/Tools\/ffmpeg\.exe/i);
+  assert.deepEqual(
+    versionCalls.find((call) => call.command === 'C:/Tools/ffmpeg.exe')?.args,
+    ['-version'],
   );
 });
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { firstResolvedExecutableFromWhere, shouldHideWindowsConsoleForCommand } from './mpv-launch-helpers.js';
+import { buildMpvSpawnArgs, firstResolvedExecutableFromWhere, shouldHideWindowsConsoleForCommand } from './mpv-launch-helpers.js';
 
 test('firstResolvedExecutableFromWhere returns the first non-empty line', () => {
   const output = '\r\nC:\\Users\\Admin\\scoop\\apps\\mpv\\current\\mpv.exe\r\nC:\\Other\\mpv.exe\r\n';
@@ -12,4 +12,9 @@ test('shouldHideWindowsConsoleForCommand matches mpv launch targets', () => {
   assert.equal(shouldHideWindowsConsoleForCommand('"C:\\Tools\\mpv.exe"'), true);
   assert.equal(shouldHideWindowsConsoleForCommand('C:\\Tools\\mpv.com'), true);
   assert.equal(shouldHideWindowsConsoleForCommand('node'), false);
+});
+
+test('buildMpvSpawnArgs enables gapless audio', () => {
+  const args = buildMpvSpawnArgs('\\\\.\\pipe\\agentune-mpv');
+  assert.ok(args.includes('--gapless-audio=yes'));
 });

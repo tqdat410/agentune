@@ -5,6 +5,8 @@ import { QueuePlaybackController } from './queue-playback-controller.js';
 import { QueueManager } from './queue-manager.js';
 
 class FakeMpv extends EventEmitter {
+  public appendCalls: string[] = [];
+  public clearPlaylistCalls = 0;
   public playCalls: Array<{ url: string; meta: unknown }> = [];
   public resumeCalls = 0;
   public stopCalls = 0;
@@ -17,6 +19,14 @@ class FakeMpv extends EventEmitter {
     this.playCalls.push({ url, meta });
     this.currentTrack = meta;
     this.isPlaying = !this.pauseProperty;
+  }
+
+  appendToPlaylist(filePath: string): void {
+    this.appendCalls.push(filePath);
+  }
+
+  clearPlaylist(): void {
+    this.clearPlaylistCalls += 1;
   }
 
   stop(): void {
@@ -50,6 +60,82 @@ class FakeMpv extends EventEmitter {
 
   async getPosition(): Promise<number> {
     return 0;
+  }
+}
+
+class FakeTransitionController extends EventEmitter {
+  public cancelCalls = 0;
+  public handleSkipCalls = 0;
+  public prefetchCalls: string[] = [];
+  public logicalPosition = 0;
+
+  isActive(): boolean { return true; }
+
+  isEnabled(): boolean { return true; }
+
+  isInCrossfade(): boolean { return false; }
+
+  getCurrentLogicalTrack(): {
+    id: string;
+    title: string;
+    artist: string;
+    duration: number;
+    thumbnail: string;
+    url: string;
+  } | null {
+    return null;
+  }
+
+  getLogicalPosition(): { duration: number; position: number; track: { id: string } } {
+    return {
+      duration: 180,
+      position: this.logicalPosition,
+      track: { id: 'current-track' },
+    };
+  }
+
+  async prefetch(nextItem: { id: string } | null): Promise<void> {
+    if (nextItem) {
+      this.prefetchCalls.push(nextItem.id);
+    }
+  }
+
+  async prepareTransitionAsync(nextItem: { id: string }): Promise<boolean> {
+    this.prefetchCalls.push(nextItem.id);
+    return true;
+  }
+
+  cancel(): void {
+    this.cancelCalls += 1;
+  }
+
+  handleSkip(): 'clean-skip' {
+    this.handleSkipCalls += 1;
+    return 'clean-skip';
+  }
+
+  async startPlayback(
+    queueItem: {
+      id: string;
+      title: string;
+      artist: string;
+      duration: number;
+      thumbnail: string;
+      url: string;
+    },
+    _nextItem: { id: string } | null,
+  ): Promise<{
+    appendPaths: string[];
+    entryPath: string;
+    mode: 'direct';
+    track: typeof queueItem;
+  }> {
+    return {
+      appendPaths: [],
+      entryPath: 'current-body.wav',
+      mode: 'direct',
+      track: queueItem,
+    };
   }
 }
 
@@ -426,4 +512,155 @@ test('QueuePlaybackController advances when playback stops naturally', async () 
   assert.equal(fakeMpv.playCalls.length, 1);
   assert.equal(queueManager.getNowPlaying()?.id, 'next');
   assert.deepEqual(queueManager.getState().history.map((item) => item.id), ['current']);
+});
+
+test('QueuePlaybackController uses the transition controller when crossfade is enabled', async () => {
+  const queueManager = new QueueManager();
+  const fakeMpv = new FakeMpv();
+  const fakeTransition = new FakeTransitionController();
+  const controller = new QueuePlaybackController(
+    fakeMpv as never,
+    queueManager,
+    new FakeYouTubeProvider() as never,
+    fakeTransition as never,
+  );
+
+  queueManager.add({
+    id: 'queued-next',
+    title: 'Queued Next',
+    artist: 'Artist queued-next',
+    duration: 180,
+    thumbnail: 'thumb-queued-next',
+    url: 'https://youtube.test/queued-next',
+  });
+
+  await controller.playById('current-track', {
+    canonicalArtist: 'Canonical Artist',
+    canonicalTitle: 'Canonical Title',
+  });
+
+  assert.equal(fakeMpv.playCalls[0]?.url, 'current-body.wav');
+  // Append calls now happen inside the transition controller, not queue-playback
+  assert.equal(queueManager.getNowPlaying()?.id, 'current-track');
+  assert.equal(queueManager.list()[0]?.id, 'queued-next');
+
+  fakeTransition.emit('logical-track-changed', {
+    previousTrack: {
+      id: 'current-track',
+      title: 'Canonical Title',
+      artist: 'Canonical Artist',
+      duration: 180,
+      thumbnail: 'thumb-current-track',
+      url: 'https://www.youtube.com/watch?v=current-track',
+    },
+    track: {
+      id: 'queued-next',
+      title: 'Queued Next',
+      artist: 'Artist queued-next',
+      duration: 180,
+      thumbnail: 'thumb-queued-next',
+      url: 'https://youtube.test/queued-next',
+    },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(queueManager.getNowPlaying()?.id, 'queued-next');
+  assert.equal(queueManager.list().length, 0);
+});
+
+test('QueuePlaybackController preserves unrelated queued items when logical handoff queue head drifts', async () => {
+  const queueManager = new QueueManager();
+  const fakeMpv = new FakeMpv();
+  const fakeTransition = new FakeTransitionController();
+  const controller = new QueuePlaybackController(
+    fakeMpv as never,
+    queueManager,
+    new FakeYouTubeProvider() as never,
+    fakeTransition as never,
+  );
+
+  queueManager.setNowPlaying({
+    id: 'current-track',
+    title: 'Canonical Title',
+    artist: 'Canonical Artist',
+    duration: 180,
+    thumbnail: 'thumb-current-track',
+    url: 'https://www.youtube.com/watch?v=current-track',
+  });
+  queueManager.add({
+    id: 'unexpected-head',
+    title: 'Unexpected Head',
+    artist: 'Artist unexpected-head',
+    duration: 180,
+    thumbnail: 'thumb-unexpected-head',
+    url: 'https://youtube.test/unexpected-head',
+  });
+  queueManager.add({
+    id: 'queued-next',
+    title: 'Queued Next',
+    artist: 'Artist queued-next',
+    duration: 180,
+    thumbnail: 'thumb-queued-next',
+    url: 'https://youtube.test/queued-next',
+  });
+
+  fakeTransition.emit('logical-track-changed', {
+    previousTrack: {
+      id: 'current-track',
+      title: 'Canonical Title',
+      artist: 'Canonical Artist',
+      duration: 180,
+      thumbnail: 'thumb-current-track',
+      url: 'https://www.youtube.com/watch?v=current-track',
+    },
+    track: {
+      id: 'queued-next',
+      title: 'Queued Next',
+      artist: 'Artist queued-next',
+      duration: 180,
+      thumbnail: 'thumb-queued-next',
+      url: 'https://youtube.test/queued-next',
+    },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(queueManager.getNowPlaying()?.id, 'queued-next');
+  assert.deepEqual(queueManager.list().map((item) => item.id), ['unexpected-head']);
+});
+
+test('QueuePlaybackController skip consults logical transition position', async () => {
+  const queueManager = new QueueManager();
+  const fakeMpv = new FakeMpv();
+  const fakeTransition = new FakeTransitionController();
+  fakeTransition.logicalPosition = 42;
+  const controller = new QueuePlaybackController(
+    fakeMpv as never,
+    queueManager,
+    new FakeYouTubeProvider() as never,
+    fakeTransition as never,
+  );
+
+  fakeMpv.currentTrack = {
+    id: 'current',
+    title: 'Current',
+    artist: 'Artist current',
+    duration: 180,
+    thumbnail: 'thumb-current',
+    url: 'https://youtube.test/current',
+  };
+  queueManager.setNowPlaying(fakeMpv.currentTrack as never);
+  queueManager.add({
+    id: 'next',
+    title: 'Next',
+    artist: 'Artist next',
+    duration: 200,
+    thumbnail: 'thumb-next',
+    url: 'https://youtube.test/next',
+  });
+
+  const nextTrack = await controller.skip();
+
+  assert.equal(fakeTransition.handleSkipCalls, 1);
+  assert.equal(fakeMpv.clearPlaylistCalls, 1);
+  assert.equal(nextTrack?.id, 'next');
 });

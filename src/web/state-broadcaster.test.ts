@@ -105,3 +105,43 @@ test('StateBroadcaster keeps the latest playback state when refresh calls overla
     broadcaster.destroy();
   }
 });
+
+test('StateBroadcaster prefers logical transition state when provided', async () => {
+  const queueManager = new QueueManager();
+  const mpv = new StateBroadcasterFakeMpv();
+  const broadcaster = new StateBroadcaster(mpv as never, queueManager, {
+    getCurrentLogicalTrack: () => ({
+      artist: 'Logical Artist',
+      duration: 180,
+      id: 'logical-track',
+      thumbnail: 'logical-thumb',
+      title: 'Logical Track',
+      url: 'logical-url',
+    }),
+    getLogicalPosition: () => ({
+      duration: 180,
+      position: 42,
+      track: {
+        artist: 'Logical Artist',
+        duration: 180,
+        id: 'logical-track',
+        thumbnail: 'logical-thumb',
+        title: 'Logical Track',
+        url: 'logical-url',
+      },
+    }),
+  } as never);
+
+  try {
+    const refresh = broadcaster.refresh();
+    mpv.releaseNextPosition(12);
+    await refresh;
+    await waitFor(() => broadcaster.getState().position === 42);
+
+    assert.equal(broadcaster.getState().title, 'Logical Track');
+    assert.equal(broadcaster.getState().artist, 'Logical Artist');
+    assert.equal(broadcaster.getState().duration, 180);
+  } finally {
+    broadcaster.destroy();
+  }
+});
