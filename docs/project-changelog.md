@@ -1,5 +1,43 @@
 # Project Changelog
 
+## 2026-03-23 (Crossfade Transition MVP Rollout)
+
+### Audio Pipeline
+- Added the FFmpeg-powered crossfade transition pipeline in:
+  - `src/audio/audio-cache-manager.ts` — downloads tracks via yt-dlp, normalizes to 48kHz stereo WAV with EBU R128 -14 LUFS, caches with LRU eviction (default 2GB, ~11.5 MB/min)
+  - `src/audio/crossfade-pre-mixer.ts` — pre-computes crossfade segments using FFmpeg `acrossfade` filter with exponential/logarithmic/linear curves, applies -3dB pre-attenuation + output limiter, cleans up orphaned files
+  - `src/audio/transition-controller.ts` — plans single-boundary A→B gapless 3-segment playlist, tracks segment timing, emits logical track handoff events
+  - `src/queue/queue-playback-controller.ts` — integrated transition controller into playback start and advancement logic
+  - `src/audio/mpv-controller.ts` — enabled gapless audio mode via `--gapless-audio=yes`
+
+### Playback Behavior
+- Queue playback can now hand `mpv` a cached 3-segment gapless playlist for one queue boundary at a time: `body(A) -> crossfade(A,B) -> body(B)`
+- `mpv` playlist position changes (`playlist-pos`) now drive logical track handoff so queue state and dashboard state move from track `A` to track `B` at the segment boundary
+- Crossfade skipped gracefully when: disabled in config, no queued next track, track duration < `crossfadeDuration * 2`, FFmpeg unavailable, or segment generation fails. Falls back to direct handoff in all cases.
+- Skip during active crossfade performs hard-cut instead of waiting for segment completion
+- Current scope is intentionally the single-boundary `A -> B` MVP. Queue-wide chained crossfade (`B -> C -> D`) not in shipped scope.
+
+### Runtime Configuration
+- Runtime config now includes crossfade block:
+  - `crossfade.enabled` (default: true)
+  - `crossfade.duration` (default: 5s)
+  - `crossfade.curve` (`exp` | `log` | `lin`, default: `exp`)
+  - `crossfade.loudnessNorm` (default: true, uses EBU R128 -14 LUFS)
+  - `crossfade.cacheMaxMB` (default: 2048)
+- `agentune doctor` now reports `ffmpeg` as an advisory dependency; missing FFmpeg warns but does not block playback
+
+### Dashboard
+- `src/web/state-broadcaster.ts` now maps raw `mpv` segment position back to logical track position during active crossfade playback, keeping UI aligned to tracks A/B instead of raw segments
+
+### Tests + Validation
+- Added comprehensive coverage in:
+  - `src/audio/audio-cache-manager.test.ts` — download, normalization, cache eviction behavior
+  - `src/audio/crossfade-pre-mixer.test.ts` — FFmpeg segment generation and cleanup
+  - `src/audio/transition-controller.test.ts` — handoff planning and logical track transitions
+  - `src/audio/mpv-controller.test.ts` — gapless playlist behavior
+  - `src/audio/mpv-process-session.test.ts` — IPC property subscriptions
+- `npm test`: 158 passed, 0 failed (up from 126)
+
 ## 2026-03-22 (CI Stability: Authenticated yt-dlp Download + Bounded Doctor Probes)
 
 ### CI

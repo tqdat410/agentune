@@ -6,15 +6,18 @@
 
 - Agents talk to the daemon through MCP.
 - The daemon owns queue state, playback, listening history, and the browser dashboard.
-- `mpv` handles audio output.
+- `mpv` handles audio output with JSON IPC control and gapless playlist support.
 - SQLite stores tracks, play events, provider cache data, and persisted persona taste text.
-- Runtime ports, default volume, auto-start policy, and fixed discover ranking live in `${AGENTUNE_DATA_DIR || ~/.agentune}/config.json`.
+- Runtime ports, default volume, auto-start policy, fixed discover ranking, and crossfade settings live in `${AGENTUNE_DATA_DIR || ~/.agentune}/config.json`.
 - The daemon is explicit-lifecycle: no idle auto-shutdown, stop only via CLI or dashboard.
 - `agentune stop` now waits for graceful shutdown first and only falls back to a verified process kill.
 - The daemon PID file now also carries a per-process control token used by `/mcp` and `/shutdown`.
-- `agentune doctor` now reports Node.js compatibility, runtime config state, `mpv`, bundled `yt-dlp`, system `yt-dlp`, daemon health, and local runtime paths.
+- `agentune doctor` now reports Node.js compatibility, runtime config state, `mpv`, bundled `yt-dlp`, advisory `ffmpeg`, system `yt-dlp`, daemon health, and local runtime paths.
 - The dashboard now bootstraps a per-process session token into HTML and requires that token for local API, artwork-proxy, and WebSocket access.
 - Audio control now talks to `mpv` through a small internal JSON IPC client instead of the stale `node-mpv` wrapper package.
+- FFmpeg-powered crossfade pre-mixer can download/normalize tracks to cache, then pre-compute crossfade segments (48kHz stereo, EBU R128 -14 LUFS, -3dB headroom + limiter).
+- Queue playback can now hand `mpv` a cached 3-segment gapless playlist for one queue boundary at a time: `body(A) -> crossfade(A,B) -> body(B)`.
+- The current rollout is intentionally a single-boundary `A -> B` crossfade MVP; later boundaries are only planned after the queue advances. Queue-wide chained crossfade not in shipped scope.
 - Tarball publish verification now rejects unexpected install deprecation warnings and explicitly allows only the residual `better-sqlite3 -> prebuild-install` warning.
 
 The active state redesign is agent-first:
@@ -39,13 +42,16 @@ agentune/
 ├── src/
 │   ├── index.ts
 │   ├── audio/
+│   │   ├── audio-cache-manager.ts
+│   │   ├── crossfade-pre-mixer.ts
 │   │   ├── mpv-controller.ts
 │   │   ├── mpv-ipc-client.test.ts
 │   │   ├── mpv-ipc-client.ts
 │   │   ├── mpv-launch-helpers.test.ts
 │   │   ├── mpv-launch-helpers.ts
 │   │   ├── mpv-process-session.ts
-│   │   └── platform-ipc-path.ts
+│   │   ├── platform-ipc-path.ts
+│   │   └── transition-controller.ts
 │   ├── cli/
 │   │   ├── doctor-command.test.ts
 │   │   ├── doctor-command.ts
@@ -262,6 +268,7 @@ Current CLI commands:
   - loads runtime config and reports resolved data paths
   - verifies `mpv`
   - verifies the bundled `youtube-dl-exec` `yt-dlp` binary
+  - reports `ffmpeg` separately as advisory because playback still works without crossfade
   - reports system `yt-dlp` separately as advisory
   - reports daemon state as healthy / stopped / stale / unresponsive
 
@@ -271,6 +278,9 @@ Files:
 
 - `src/queue/queue-manager.ts`
 - `src/queue/queue-playback-controller.ts`
+- `src/audio/audio-cache-manager.ts`
+- `src/audio/crossfade-pre-mixer.ts`
+- `src/audio/transition-controller.ts`
 - `src/audio/mpv-controller.ts`
 - `src/audio/mpv-ipc-client.ts`
 - `src/audio/mpv-launch-helpers.ts`
@@ -280,16 +290,27 @@ Current responsibilities:
 
 - `QueueManager` owns `nowPlaying`, queued items, and playback history.
 - `QueuePlaybackController` resolves audio, starts playback, records plays, updates skip/completion status, and advances the queue.
-- `MpvController` owns the actual audio engine and emits playback state.
-- `MpvProcessSession` launches `mpv`, retries IPC connection until the socket is ready, and subscribes to `pause` / `idle-active` property changes.
-- `MpvIpcClient` is a newline-delimited JSON IPC transport with request-id correlation and out-of-order reply handling.
+- `AudioCacheManager` orchestrates yt-dlp download, FFmpeg normalization (48kHz stereo, EBU R128 -14 LUFS), and LRU cache eviction (default 2GB max, ~11.5 MB/min WAV). Coalesces concurrent prepares and guards against in-use deletions.
+- `CrossfadePreMixer` pre-computes crossfade segments using FFmpeg `acrossfade` filter. Supports exponential/logarithmic/linear curves, applies -3dB pre-attenuation + output limiter, and cleans up orphaned segments on playback end.
+- `TransitionController` decides between direct playback and a single-boundary `A -> B` crossfade 3-segment playlist: `body(A) -> crossfade(A,B) -> body(B)`. Tracks segment timing and emits logical handoff when `mpv` advances playlists.
+- `MpvController` owns the audio engine, exposes stable play/pause/resume/stop/setVolume contract, and emits state changes.
+- `MpvProcessSession` launches `mpv` with `--gapless-audio=yes`, establishes JSON IPC socket/pipe, retries until ready, and forwards property subscription requests.
+- `MpvIpcClient` is a newline-delimited JSON IPC transport with request-id matching and out-of-order reply handling.
 
 Important details:
 
+- Runtime config crossfade keys are:
+  - `crossfade.enabled` (default: true)
+  - `crossfade.duration` (default: 5s, in seconds)
+  - `crossfade.curve` (`exp` | `log` | `lin`, default: `exp`)
+  - `crossfade.loudnessNorm` (default: true)
+  - `crossfade.cacheMaxMB` (default: 2048)
 - Raw history is recorded with `recordPlay()` on start and `updatePlay()` on skip/finish.
 - Playback feedback remains as raw history rows; there is no secondary taste-update path.
 - The controller still enriches track tags from Apple after playback begins.
-- The next queued track can be prefetched for smoother transitions.
+- `QueuePlaybackController` gives `mpv` an `entryPath` plus `appendPaths` from `TransitionController`, then listens for logical handoff when `mpv` reports `playlist-pos`.
+- Current scope is a single-boundary `A -> B` crossfade MVP. Skipped scenarios: disabled config, no queued next track, either track duration < `crossfadeDuration * 2`, FFmpeg unavailable, or pre-mix generation failure. All fallback to direct handoff.
+- Skip during active crossfade performs hard-cut instead of waiting for segment completion.
 - On Windows, the internal launcher still prefers `mpv.exe` and starts `mpv` with `windowsHide: true` to avoid blank console windows.
 - Natural track-end detection now depends on observed `idle-active` transitions from `mpv` JSON IPC instead of wrapper-specific stop events.
 
@@ -324,6 +345,7 @@ Current HTTP and WebSocket surface:
 Current behavior:
 
 - `StateBroadcaster` publishes playback snapshots: playing, title, artist, thumbnail, position, duration, volume, muted, queue.
+- `StateBroadcaster` maps raw `mpv` segment position back to logical track position when the crossfade playlist is active.
 - `GET /` serves dashboard HTML dynamically and injects a session token into a `<meta>` tag.
 - Persona data is fetched separately from `/api/persona`.
 - Artwork is fetched through `/api/artwork`, so the browser can render and sample thumbnails from a same-origin URL.
@@ -366,6 +388,9 @@ Important details:
 
 Current state-redesign coverage lives in:
 
+- `src/audio/audio-cache-manager.test.ts`
+- `src/audio/crossfade-pre-mixer.test.ts`
+- `src/audio/transition-controller.test.ts`
 - `src/audio/mpv-ipc-client.test.ts`
 - `src/audio/mpv-launch-helpers.test.ts`
 - `src/history/history-store-state-redesign.test.ts`

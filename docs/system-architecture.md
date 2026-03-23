@@ -14,6 +14,9 @@ Agent / MCP Client
   -> agentune daemon
      -> MCP tools
      -> queue + playback controller
+        -> transition controller
+          -> audio cache manager
+          -> crossfade pre-mixer (ffmpeg)
      -> taste engine
      -> history store (SQLite)
      -> web dashboard (:dashboardPort from config)
@@ -52,12 +55,19 @@ Agent / MCP Client
 ### Operational Diagnostics
 
 - `agentune doctor` is a local CLI health check for installation and runtime support.
+- Runtime `config.json` now includes a `crossfade` block with:
+  - `enabled`
+  - `duration`
+  - `curve`
+  - `loudnessNorm`
+  - `cacheMaxMB`
 - Required checks:
   - Node.js satisfies `package.json.engines.node`
   - runtime config loads successfully
   - `mpv` resolves from PATH
   - the bundled `youtube-dl-exec` `yt-dlp` binary exists and is executable
 - Advisory checks:
+  - `ffmpeg` on PATH for crossfade mixing
   - system `yt-dlp` on PATH
   - daemon health / stopped state
 - The command also reports resolved runtime paths:
@@ -182,6 +192,9 @@ Files:
 
 - `src/queue/queue-manager.ts`
 - `src/queue/queue-playback-controller.ts`
+- `src/audio/audio-cache-manager.ts`
+- `src/audio/crossfade-pre-mixer.ts`
+- `src/audio/transition-controller.ts`
 - `src/audio/mpv-controller.ts`
 - `src/audio/mpv-process-session.ts`
 - `src/audio/mpv-ipc-client.ts`
@@ -191,8 +204,11 @@ Behavior:
 
 - `QueueManager` owns now playing, queued items, and playback history.
 - `QueuePlaybackController` resolves audio, records plays, updates completion/skip status, and advances the queue.
+- `AudioCacheManager` downloads/caches track audio and normalizes WAV files (48kHz stereo, EBU R128 -14 LUFS) when `ffmpeg` is available. LRU eviction with configurable max (default 2GB).
+- `CrossfadePreMixer` renders cached body/crossfade/body segments with `ffmpeg acrossfade`. Applies headroom (-3dB pre-attenuation + limiter) and supports exponential/logarithmic/linear crossfade curves. Includes cleanup for orphaned segments.
+- `TransitionController` plans either direct playback or a 3-segment gapless playlist: `body(A) -> crossfade(A,B) -> body(B)`. Emits logical handoff events based on `mpv` `playlist-pos` changes.
 - `MpvController` keeps the public playback contract stable for queue, MCP, and dashboard code.
-- `MpvProcessSession` launches `mpv` directly and binds the JSON IPC socket/pipe.
+- `MpvProcessSession` launches `mpv` directly with `--gapless-audio=yes` and binds the JSON IPC socket/pipe.
 - `MpvIpcClient` sends newline-delimited JSON commands and matches replies by `request_id`.
 - Track feedback is stored as raw history updates only.
 - Playback feedback now stays in raw history rows; there is no secondary taste update loop.
@@ -201,8 +217,13 @@ Behavior:
 Important notes:
 
 - The old `node-mpv` wrapper is gone.
+- The current rollout is a single-boundary `A -> B` crossfade MVP. Each playback start plans at most one queued handoff, then the next boundary is prepared only after queue advancement. Queue-wide chained crossfade is not part of the shipped scope.
+- Crossfade is skipped when disabled in runtime config, when there is no queued next track, or when either track duration < `crossfadeDuration * 2`.
+- If `ffmpeg` is unavailable or pre-mix generation fails, playback falls back to direct handoff instead of failing the queue.
 - The controller observes `pause` and `idle-active` through JSON IPC so pause/resume state and natural track-end queue advancement stay deterministic.
+- `playlist-pos` updates from `mpv` are translated into logical track handoff events so queue state and dashboard state can promote track `B` without exposing raw segment files.
 - Windows launch behavior still hides the managed `mpv` console window and prefers `mpv.exe` when present.
+- Skip during active crossfade falls back to hard-cut instead of waiting for segment completion.
 
 ### Web Dashboard
 
@@ -260,6 +281,7 @@ Important notes:
 - Dashboard JSON body reads are size-bounded.
 - `POST /api/volume` rejects non-finite input and clamps accepted values into `0..100`.
 - WebSocket volume updates also reject non-finite input.
+- `StateBroadcaster` uses `TransitionController` logical track/position when crossfade is active, so the UI stays aligned to track `A`/`B` instead of raw playlist segment boundaries.
 - `/api/artwork` only proxies remote `http` / `https` image responses, blocks loopback/private/link-local targets, resolves hostnames before fetch, validates redirect targets, and caps proxied artwork size.
 - Static assets are resolved relative to the real `public/` root instead of relying on prefix string checks.
 - Persona changes are broadcast to connected clients over WebSocket.
@@ -311,6 +333,8 @@ Important notes:
 
 - `npm run build` cleans `dist/` before compiling so deleted test files do not leak into later runs.
 - `npm test` currently validates:
+  - audio cache + crossfade segment generation
+  - transition-controller handoff behavior
   - mpv IPC transport behavior
   - Windows mpv launch helpers
   - history store behavior

@@ -15,6 +15,7 @@
 - explicit daemon lifecycle + dashboard stop: complete
 - optional daemon auto-start + manual `agentune start`: complete
 - local dependency + daemon diagnostics via `agentune doctor`: complete
+- single-boundary `A -> B` crossfade transition MVP: complete (158 tests passing)
 - web/dashboard hardening + safer daemon stop: complete
 - discover rewrite automated validation: complete
 - local-gated npm release workflow: complete
@@ -23,12 +24,13 @@
 
 Last validated:
 
-- `2026-03-22`
+- `2026-03-23`
 - `npm run build`: passed
-- `npm test`: 126 passed, 0 failed
+- `npm test`: 158 passed, 0 failed (crossfade, cache, transition, and audio tests included)
 - `npm run verify:publish`: passed
-- `node dist/index.js doctor`: passed
+- `node dist/index.js doctor`: passed (FFmpeg reported as advisory)
 - built-handler smoke: `discover({ artist: "Nils Frahm", limit: 1 })` returned a paginated Apple candidate
+- crossfade MVP: 3-segment gapless playlist playback verified
 
 ## Completed Milestones
 
@@ -86,10 +88,15 @@ Next work:
 
 Status: in progress
 
-Next work:
+Completed:
+- Updated `docs/system-architecture.md` with crossfade audio pipeline details
+- Updated `docs/codebase-summary.md` with FFmpeg pre-mixer and cache manager responsibilities
+- Updated `docs/project-changelog.md` with v0.1.3 crossfade rollout entry
 
-- keep `README.md`, `docs/system-architecture.md`, `docs/codebase-summary.md`, this roadmap, and the changelog aligned with the shipped discover contract
-- trim stale historical detail when it starts competing with current-state docs
+Next work:
+- validate all internal links and code references in docs
+- ensure README.md matches current CLI surface and feature set
+- trim stale historical detail from changelog when document exceeds comfortable size
 
 ### 3. Release Readiness
 
@@ -105,6 +112,7 @@ Next work:
 
 - more direct MCP coverage around discover pagination and cache invalidation
 - more daemon/proxy end-to-end coverage for taste updates
+- runtime smoke coverage for crossfade with and without `ffmpeg`
 - optional richer dashboard controls
 - cross-platform release rehearsal notes for npm publish
 
@@ -122,6 +130,7 @@ The roadmap should stay true when these statements remain accurate:
 
 - an agent can understand taste from raw state instead of opaque server scores
 - `discover()` returns flat paginated Apple candidates with cache-backed follow-up pages
+- docs describe crossfade as the current single-boundary `A -> B` MVP instead of implying continuous multi-track mixing
 - the queue, dashboard, and MCP tools stay in sync
 - the codebase can be validated with a clean `npm run build` and `npm test`
 - docs describe the current runtime, not superseded experiments
